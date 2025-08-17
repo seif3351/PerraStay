@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0, 0%, 98%);
+  --foreground: hsl(210, 15%, 20%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(210, 15%, 20%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(210, 15%, 20%);
+  --primary: hsl(38, 90%, 55%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(210, 15%, 20%);
+  --secondary-foreground: hsl(0, 0%, 100%);
+  --muted: hsl(220, 13%, 91%);
+  --muted-foreground: hsl(210, 15%, 20%);
+  --accent: hsl(38, 71%, 84%);
+  --accent-foreground: hsl(38, 90%, 55%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(214, 32%, 91%);
+  --input: hsl(214, 32%, 91%);
+  --ring: hsl(38, 90%, 55%);
+  --chart-1: hsl(38, 90%, 55%);
+  --chart-2: hsl(159, 100%, 36%);
+  --chart-3: hsl(42, 93%, 56%);
+  --chart-4: hsl(147, 78%, 42%);
+  --chart-5: hsl(341, 75%, 51%);
+  --sidebar: hsl(0, 0%, 100%);
+  --sidebar-foreground: hsl(210, 15%, 20%);
+  --sidebar-primary: hsl(38, 90%, 55%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(38, 71%, 84%);
+  --sidebar-accent-foreground: hsl(38, 90%, 55%);
+  --sidebar-border: hsl(214, 32%, 91%);
+  --sidebar-ring: hsl(38, 90%, 55%);
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-serif: 'Georgia', serif;
+  --font-mono: 'Menlo', monospace;
+  --font-heading: 'Poppins', system-ui, sans-serif;
+  --radius: 0.75rem;
+  --perra-gold: hsl(38, 90%, 55%);
+  --perra-gold-light: hsl(38, 71%, 84%);
+  --perra-dark: hsl(210, 15%, 20%);
+  --perra-gray: hsl(217, 19%, 51%);
+  --perra-light: hsl(0, 0%, 98%);
+}
+
+.dark {
+  --background: hsl(222, 84%, 5%);
+  --foreground: hsl(210, 40%, 98%);
+  --card: hsl(222, 84%, 5%);
+  --card-foreground: hsl(210, 40%, 98%);
+  --popover: hsl(222, 84%, 5%);
+  --popover-foreground: hsl(210, 40%, 98%);
+  --primary: hsl(38, 90%, 55%);
+  --primary-foreground: hsl(222, 84%, 5%);
+  --secondary: hsl(217, 32%, 17%);
+  --secondary-foreground: hsl(210, 40%, 98%);
+  --muted: hsl(217, 32%, 17%);
+  --muted-foreground: hsl(215, 20%, 65%);
+  --accent: hsl(217, 32%, 17%);
+  --accent-foreground: hsl(210, 40%, 98%);
+  --destructive: hsl(0, 62%, 30%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --border: hsl(217, 32%, 17%);
+  --input: hsl(217, 32%, 17%);
+  --ring: hsl(38, 90%, 55%);
+  --chart-1: hsl(220, 70%, 50%);
+  --chart-2: hsl(160, 60%, 45%);
+  --chart-3: hsl(30, 80%, 55%);
+  --chart-4: hsl(280, 65%, 60%);
+  --chart-5: hsl(340, 75%, 55%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+}
+
+@layer utilities {
+  .text-perra-gold {
+    color: var(--perra-gold);
+  }
+  .text-perra-dark {
+    color: var(--perra-dark);
+  }
+  .text-perra-gray {
+    color: var(--perra-gray);
+  }
+  .bg-perra-gold {
+    background-color: var(--perra-gold);
+  }
+  .bg-perra-gold-light {
+    background-color: var(--perra-gold-light);
+  }
+  .bg-perra-light {
+    background-color: var(--perra-light);
+  }
+  .border-perra-gold {
+    border-color: var(--perra-gold);
+  }
+  .hover\:bg-perra-gold:hover {
+    background-color: var(--perra-gold);
+  }
+  .focus\:ring-perra-gold:focus {
+    --tw-ring-color: var(--perra-gold);
+  }
+}
