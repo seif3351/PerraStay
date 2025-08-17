@@ -39,7 +39,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const property = await storage.createProperty(validatedData);
       res.status(201).json(property);
     } catch (error) {
-      res.status(400).json({ message: "Invalid property data" });
+      console.error("Property creation error:", error);
+      res.status(400).json({ message: "Invalid property data", error: error instanceof Error ? error.message : String(error) });
     }
   });
 

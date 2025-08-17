@@ -533,24 +533,28 @@ export default function AddProperty() {
               </CardContent>
             </Card>
 
-            {/* Submit */}
-            <div className="flex gap-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setLocation('/host-dashboard')}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 bg-perra-primary hover:bg-perra-primary/90"
-                disabled={createPropertyMutation.isPending}
-              >
-                {createPropertyMutation.isPending ? "Adding Property..." : "Add Property"}
-              </Button>
-            </div>
+            {/* Submit Buttons */}
+            <Card className="sticky bottom-4 bg-white shadow-lg border-2">
+              <CardContent className="p-4">
+                <div className="flex gap-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setLocation('/host-dashboard')}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-perra-gold hover:bg-perra-gold/90 text-white font-semibold"
+                    disabled={createPropertyMutation.isPending}
+                  >
+                    {createPropertyMutation.isPending ? "Adding Property..." : "Add Property"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </form>
         </Form>
       </div>
