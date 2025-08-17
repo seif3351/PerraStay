@@ -13,11 +13,14 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertPropertySchema, type InsertProperty } from "@shared/schema";
+import { z } from "zod";
 import { Home, MapPin, DollarSign, Bed, Bath, Wifi, Zap, Coffee, Snowflake, Briefcase, Camera, Plus, X } from "lucide-react";
 
 const propertyFormSchema = insertPropertySchema.extend({
   images: insertPropertySchema.shape.images.optional(),
   amenities: insertPropertySchema.shape.amenities.optional(),
+  monthlyPrice: z.string().min(1, "Monthly price is required").regex(/^\d+(\.\d{1,2})?$/, "Please enter a valid price"),
+  depositAmount: z.string().min(1, "Deposit amount is required").regex(/^\d+(\.\d{1,2})?$/, "Please enter a valid deposit amount"),
 });
 
 type PropertyFormData = InsertProperty;
@@ -67,9 +70,7 @@ export default function AddProperty() {
       setLocation('/host-dashboard');
     },
     onError: (error) => {
-      console.error('Full error object:', error);
-      console.error('Error message:', error?.message || 'No message');
-      console.error('Error response:', error?.response || 'No response');
+      console.error('Error creating property:', error);
       toast({
         title: "Error",
         description: "Failed to add property. Please try again.",
@@ -79,14 +80,22 @@ export default function AddProperty() {
   });
 
   const onSubmit = (data: PropertyFormData) => {
-    console.log("Form data received:", data);
+    // Ensure required fields are not empty
+    if (!data.monthlyPrice || !data.depositAmount || !data.description || !data.location) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields: description, location, monthly price, and deposit amount.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const propertyData: InsertProperty = {
       ...data,
       images: imageUrls.length > 0 ? imageUrls : [],
       amenities: customAmenities.length > 0 ? customAmenities : [],
     };
     
-    console.log("Property data to send:", propertyData);
     createPropertyMutation.mutate(propertyData);
   };
 
