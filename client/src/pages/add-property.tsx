@@ -56,7 +56,7 @@ export default function AddProperty() {
 
   const createPropertyMutation = useMutation({
     mutationFn: (data: InsertProperty) => 
-      apiRequest('/api/properties', 'POST', data),
+      apiRequest('POST', '/api/properties', data),
     onSuccess: (newProperty) => {
       toast({
         title: "Success!",
@@ -67,22 +67,26 @@ export default function AddProperty() {
       setLocation('/host-dashboard');
     },
     onError: (error) => {
+      console.error('Full error object:', error);
+      console.error('Error message:', error?.message || 'No message');
+      console.error('Error response:', error?.response || 'No response');
       toast({
         title: "Error",
         description: "Failed to add property. Please try again.",
         variant: "destructive",
       });
-      console.error('Error creating property:', error);
     },
   });
 
   const onSubmit = (data: PropertyFormData) => {
+    console.log("Form data received:", data);
     const propertyData: InsertProperty = {
       ...data,
       images: imageUrls.length > 0 ? imageUrls : [],
       amenities: customAmenities.length > 0 ? customAmenities : [],
     };
     
+    console.log("Property data to send:", propertyData);
     createPropertyMutation.mutate(propertyData);
   };
 
