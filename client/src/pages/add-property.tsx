@@ -15,7 +15,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { insertPropertySchema, type InsertProperty } from "@shared/schema";
 import { Home, MapPin, DollarSign, Bed, Bath, Wifi, Zap, Coffee, Snowflake, Briefcase, Camera, Plus, X } from "lucide-react";
 
-const propertyFormSchema = insertPropertySchema.extend({
+const propertyFormSchema = insertPropertySchema.omit({
+  hostId: true,
+}).extend({
   images: insertPropertySchema.shape.images.optional(),
   amenities: insertPropertySchema.shape.amenities.optional(),
 });
@@ -76,9 +78,6 @@ export default function AddProperty() {
   });
 
   const onSubmit = (data: PropertyFormData) => {
-    console.log("Form submitted with data:", data);
-    console.log("Form errors:", form.formState.errors);
-    
     const propertyData: InsertProperty = {
       ...data,
       hostId: "host1", // In a real app, this would come from authentication
@@ -86,7 +85,6 @@ export default function AddProperty() {
       amenities: customAmenities.length > 0 ? customAmenities : [],
     };
     
-    console.log("Sending property data:", propertyData);
     createPropertyMutation.mutate(propertyData);
   };
 
@@ -553,11 +551,7 @@ export default function AddProperty() {
                     type="submit"
                     className="flex-1 bg-perra-gold hover:bg-perra-gold/90 text-white font-semibold"
                     disabled={createPropertyMutation.isPending}
-                    onClick={(e) => {
-                      console.log("Submit button clicked");
-                      console.log("Form valid:", form.formState.isValid);
-                      console.log("Form errors:", form.formState.errors);
-                    }}
+
                   >
                     {createPropertyMutation.isPending ? "Adding Property..." : "Add Property"}
                   </Button>
