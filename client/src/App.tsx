@@ -9,6 +9,7 @@ import Search from "@/pages/search";
 import PropertyDetail from "@/pages/property-detail";
 import HostDashboard from "@/pages/host-dashboard";
 import GuestDashboard from "@/pages/guest-dashboard";
+import AddProperty from "@/pages/add-property";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/property/:id" component={PropertyDetail} />
       <Route path="/host-dashboard" component={HostDashboard} />
       <Route path="/guest-dashboard" component={GuestDashboard} />
+      <Route path="/add-property" component={AddProperty} />
       <Route component={NotFound} />
     </Switch>
   );

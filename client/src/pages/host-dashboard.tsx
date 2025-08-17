@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PropertyCard from "@/components/property-card";
 import { Plus, Home, Calendar, DollarSign, Users, TrendingUp } from "lucide-react";
+import { Link } from "wouter";
 
 export default function HostDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -149,10 +150,12 @@ export default function HostDashboard() {
           <TabsContent value="properties" className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-semibold">Your Properties</h2>
-              <Button className="bg-perra-gold hover:bg-perra-gold/90">
-                <Plus className="w-4 h-4 mr-2" />
-                Add New Property
-              </Button>
+              <Link href="/add-property">
+                <Button className="bg-perra-gold hover:bg-perra-gold/90">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add New Property
+                </Button>
+              </Link>
             </div>
 
             {properties.length === 0 ? (
@@ -161,10 +164,12 @@ export default function HostDashboard() {
                   <Home className="w-12 h-12 mx-auto text-perra-gray mb-4" />
                   <h3 className="text-lg font-semibold text-perra-dark mb-2">No properties yet</h3>
                   <p className="text-perra-gray mb-4">Start earning by listing your first property</p>
-                  <Button className="bg-perra-gold hover:bg-perra-gold/90">
-                    <Plus className="w-4 h-4 mr-2" />
-                    List Your Property
-                  </Button>
+                  <Link href="/add-property">
+                    <Button className="bg-perra-gold hover:bg-perra-gold/90">
+                      <Plus className="w-4 h-4 mr-2" />
+                      List Your Property
+                    </Button>
+                  </Link>
                 </CardContent>
               </Card>
             ) : (

@@ -1,4 +1,5 @@
 import { 
+  users, properties, bookings, reviews, deliveryOrders,
   type User, type InsertUser,
   type Property, type InsertProperty,
   type Booking, type InsertBooking,
@@ -6,6 +7,8 @@ import {
   type DeliveryOrder, type InsertDeliveryOrder
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -348,4 +351,186 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({
+        ...insertUser,
+        isHost: insertUser.isHost ?? false
+      })
+      .returning();
+    return user;
+  }
+
+  async getProperty(id: string): Promise<Property | undefined> {
+    const [property] = await db.select().from(properties).where(eq(properties.id, id));
+    return property || undefined;
+  }
+
+  async getProperties(filters?: {
+    location?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    amenities?: string[];
+  }): Promise<Property[]> {
+    let query = db.select().from(properties);
+    
+    // For simplicity, we'll implement basic filtering here
+    // In production, you'd want to use proper query building with drizzle
+    const allProperties = await query;
+    
+    if (!filters) return allProperties;
+    
+    return allProperties.filter(p => {
+      if (filters.location && !p.location.toLowerCase().includes(filters.location.toLowerCase())) {
+        return false;
+      }
+      if (filters.minPrice && parseFloat(p.monthlyPrice) < filters.minPrice) {
+        return false;
+      }
+      if (filters.maxPrice && parseFloat(p.monthlyPrice) > filters.maxPrice) {
+        return false;
+      }
+      if (filters.amenities && filters.amenities.length > 0) {
+        if (!filters.amenities.every(amenity => p.amenities?.includes(amenity))) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  async getPropertiesByHost(hostId: string): Promise<Property[]> {
+    return await db.select().from(properties).where(eq(properties.hostId, hostId));
+  }
+
+  async createProperty(insertProperty: InsertProperty): Promise<Property> {
+    const [property] = await db
+      .insert(properties)
+      .values({
+        ...insertProperty,
+        rating: "0.00",
+        reviewCount: 0,
+        images: insertProperty.images ?? [],
+        amenities: insertProperty.amenities ?? [],
+        hasStableElectricity: insertProperty.hasStableElectricity ?? true,
+        hasKitchen: insertProperty.hasKitchen ?? true,
+        hasWorkspace: insertProperty.hasWorkspace ?? false,
+        hasAC: insertProperty.hasAC ?? false,
+        hasCoffeeMachine: insertProperty.hasCoffeeMachine ?? false,
+        isVerified: insertProperty.isVerified ?? false,
+        internetSpeed: insertProperty.internetSpeed ?? null
+      })
+      .returning();
+    return property;
+  }
+
+  async updateProperty(id: string, updates: Partial<InsertProperty>): Promise<Property | undefined> {
+    const [property] = await db
+      .update(properties)
+      .set(updates)
+      .where(eq(properties.id, id))
+      .returning();
+    return property || undefined;
+  }
+
+  async getBooking(id: string): Promise<Booking | undefined> {
+    const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
+    return booking || undefined;
+  }
+
+  async getBookingsByGuest(guestId: string): Promise<Booking[]> {
+    return await db.select().from(bookings).where(eq(bookings.guestId, guestId));
+  }
+
+  async getBookingsByProperty(propertyId: string): Promise<Booking[]> {
+    return await db.select().from(bookings).where(eq(bookings.propertyId, propertyId));
+  }
+
+  async createBooking(insertBooking: InsertBooking): Promise<Booking> {
+    const [booking] = await db
+      .insert(bookings)
+      .values({
+        ...insertBooking,
+        depositRefunded: false,
+        status: insertBooking.status ?? "pending"
+      })
+      .returning();
+    return booking;
+  }
+
+  async updateBookingStatus(id: string, status: string): Promise<Booking | undefined> {
+    const [booking] = await db
+      .update(bookings)
+      .set({ status })
+      .where(eq(bookings.id, id))
+      .returning();
+    return booking || undefined;
+  }
+
+  async getReviewsByProperty(propertyId: string): Promise<Review[]> {
+    return await db.select().from(reviews).where(eq(reviews.propertyId, propertyId));
+  }
+
+  async createReview(insertReview: InsertReview): Promise<Review> {
+    const [review] = await db
+      .insert(reviews)
+      .values({
+        ...insertReview,
+        comment: insertReview.comment ?? null
+      })
+      .returning();
+    
+    // Update property rating
+    const propertyReviews = await this.getReviewsByProperty(insertReview.propertyId);
+    const avgRating = propertyReviews.reduce((sum, r) => sum + r.rating, 0) / propertyReviews.length;
+    await db
+      .update(properties)
+      .set({
+        rating: avgRating.toFixed(2),
+        reviewCount: propertyReviews.length
+      })
+      .where(eq(properties.id, insertReview.propertyId));
+    
+    return review;
+  }
+
+  async getDeliveryOrdersByGuest(guestId: string): Promise<DeliveryOrder[]> {
+    return await db.select().from(deliveryOrders).where(eq(deliveryOrders.guestId, guestId));
+  }
+
+  async createDeliveryOrder(insertOrder: InsertDeliveryOrder): Promise<DeliveryOrder> {
+    const [order] = await db
+      .insert(deliveryOrders)
+      .values({
+        ...insertOrder,
+        status: insertOrder.status ?? "pending",
+        items: insertOrder.items ?? [],
+        discountAmount: insertOrder.discountAmount ?? "0.00"
+      })
+      .returning();
+    return order;
+  }
+
+  async updateDeliveryOrderStatus(id: string, status: string): Promise<DeliveryOrder | undefined> {
+    const [order] = await db
+      .update(deliveryOrders)
+      .set({ status })
+      .where(eq(deliveryOrders.id, id))
+      .returning();
+    return order || undefined;
+  }
+}
+
+export const storage = new DatabaseStorage();
