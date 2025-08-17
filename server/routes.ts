@@ -35,11 +35,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/properties", async (req, res) => {
     try {
+      console.log("Received data:", JSON.stringify(req.body, null, 2));
       const validatedData = insertPropertySchema.parse(req.body);
+      console.log("Validated data:", JSON.stringify(validatedData, null, 2));
       const property = await storage.createProperty(validatedData);
+      console.log("Created property:", JSON.stringify(property, null, 2));
       res.status(201).json(property);
     } catch (error) {
       console.error("Property creation error:", error);
+      console.error("Error details:", error instanceof Error ? error.message : String(error));
       res.status(400).json({ message: "Invalid property data", error: error instanceof Error ? error.message : String(error) });
     }
   });

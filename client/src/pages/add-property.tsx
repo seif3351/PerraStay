@@ -15,14 +15,12 @@ import { apiRequest } from "@/lib/queryClient";
 import { insertPropertySchema, type InsertProperty } from "@shared/schema";
 import { Home, MapPin, DollarSign, Bed, Bath, Wifi, Zap, Coffee, Snowflake, Briefcase, Camera, Plus, X } from "lucide-react";
 
-const propertyFormSchema = insertPropertySchema.omit({
-  hostId: true,
-}).extend({
+const propertyFormSchema = insertPropertySchema.extend({
   images: insertPropertySchema.shape.images.optional(),
   amenities: insertPropertySchema.shape.amenities.optional(),
 });
 
-type PropertyFormData = Omit<InsertProperty, 'hostId'>;
+type PropertyFormData = InsertProperty;
 
 export default function AddProperty() {
   const [, setLocation] = useLocation();
@@ -36,6 +34,7 @@ export default function AddProperty() {
   const form = useForm<PropertyFormData>({
     resolver: zodResolver(propertyFormSchema),
     defaultValues: {
+      hostId: "host1",
       title: "",
       description: "",
       location: "",
@@ -80,7 +79,6 @@ export default function AddProperty() {
   const onSubmit = (data: PropertyFormData) => {
     const propertyData: InsertProperty = {
       ...data,
-      hostId: "host1", // In a real app, this would come from authentication
       images: imageUrls.length > 0 ? imageUrls : [],
       amenities: customAmenities.length > 0 ? customAmenities : [],
     };
