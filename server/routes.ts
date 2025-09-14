@@ -57,7 +57,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isHost: validatedInput.isHost,
       };
       
-      const user = await storage.createUser(userData);
+      const validatedUserData = insertUserSchema.parse(userData);
+      const user = await storage.createUser(validatedUserData);
       
       // Don't return password in response
       const { password: _, ...userWithoutPassword } = user;
