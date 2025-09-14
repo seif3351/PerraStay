@@ -19,7 +19,12 @@ const signInSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || "perra-default-jwt-secret-change-in-production";
+// Secure JWT secret management
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET environment variable is required in production');
+}
+const jwtSecret = JWT_SECRET || "perra-dev-secret-not-for-production";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
@@ -101,7 +106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email, 
           isHost: user.isHost 
         },
-        JWT_SECRET,
+        jwtSecret,
         { expiresIn: '7d' }
       );
       
@@ -113,11 +118,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
       
-      // Don't return password in response
+      // Don't return password or token in response (use httpOnly cookie only)
       const { password: _, ...userWithoutPassword } = user;
       res.json({
-        user: userWithoutPassword,
-        token // Also return token for localStorage compatibility
+        user: userWithoutPassword
       });
     } catch (error) {
       console.error("Sign in error:", error);
@@ -133,6 +137,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Authentication failed" 
       });
     }
+  });
+
+  // Sign out route
+  app.post("/api/signout", (req, res) => {
+    res.clearCookie('auth-token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    res.json({ message: "Signed out successfully" });
   });
 
   // Properties routes

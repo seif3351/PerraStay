@@ -64,11 +64,8 @@ export default function AuthPage() {
       const result = await response.json();
       const user = result.user || result; // Handle both new and legacy response formats
       
-      // Store both user and token
+      // Store user data (authentication handled by httpOnly cookie)
       localStorage.setItem('user', JSON.stringify(user));
-      if (result.token) {
-        localStorage.setItem('auth-token', result.token);
-      }
       
       toast({
         title: 'Signed in!',
