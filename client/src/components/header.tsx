@@ -7,8 +7,7 @@ import type { User as UserType } from "@shared/schema";
 import logoPngPath from "@assets/035EA920-1957-4A32-8948-7A535AFA0113_1755437763078.png";
 
 export default function Header() {
-  const [location] = useLocation();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<UserType | null>(null);
   const { toast } = useToast();
@@ -16,8 +15,14 @@ export default function Header() {
   // Check authentication status on mount and when localStorage changes
   useEffect(() => {
     const checkAuth = () => {
-      const userData = localStorage.getItem('user');
-      setUser(userData ? JSON.parse(userData) : null);
+      try {
+        const userData = localStorage.getItem('user');
+        setUser(userData ? JSON.parse(userData) : null);
+      } catch (error) {
+        console.error('Error parsing user data from localStorage:', error);
+        localStorage.removeItem('user'); // Clear corrupted data
+        setUser(null);
+      }
     };
 
     checkAuth();
