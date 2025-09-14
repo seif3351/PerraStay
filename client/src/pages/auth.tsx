@@ -216,28 +216,25 @@ export default function AuthPage() {
                     )}
                   />
                 </div>
-                <FormField
-                  control={signUpForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <input
-                        type="text"
-                        placeholder="Enter your email"
-                        autoComplete="off"
-                        data-testid="input-email-signup"
-                        value={field.value ?? ''}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm pointer-events-auto relative z-10"
-                      />
-                      <FormMessage />
-                    </FormItem>
+                <div>
+                  <label htmlFor="signup-email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Email
+                  </label>
+                  <input
+                    id="signup-email"
+                    type="email"
+                    placeholder="Enter your email"
+                    autoComplete="email"
+                    data-testid="input-email-signup"
+                    {...signUpForm.register('email')}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm mt-2"
+                  />
+                  {signUpForm.formState.errors.email && (
+                    <p className="text-sm font-medium text-destructive mt-2">
+                      {signUpForm.formState.errors.email.message}
+                    </p>
                   )}
-                />
+                </div>
                 <FormField
                   control={signUpForm.control}
                   name="password"
