@@ -224,10 +224,10 @@ export default function AuthPage() {
                       <FormLabel>Email</FormLabel>
                       <FormControl>
                         <Input
-                          type="email"
+                          type="text"
                           placeholder="Enter your email"
-                          autoComplete="email"
-                          data-testid="input-email"
+                          autoComplete="off"
+                          data-testid="input-email-signup"
                           {...field}
                         />
                       </FormControl>
