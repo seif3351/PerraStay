@@ -54,7 +54,7 @@ export class MemStorage implements IStorage {
   private deliveryOrders: Map<string, DeliveryOrder> = new Map();
 
   constructor() {
-    this.seedData();
+    // No more mock data seeding - using clean storage
   }
 
   // User operations
@@ -250,106 +250,8 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  private seedData() {
-    // Don't create dummy users anymore - we'll use real registered users
-    // The properties will be assigned to real users when they register
-
-    // Create sample properties
-    const properties: Property[] = [
-      {
-        id: "prop1",
-        hostId: "host1",
-        title: "Modern Downtown Loft",
-        description: "A stunning modern loft in the heart of downtown with city views, premium finishes, and all the amenities you need for extended stays.",
-        location: "San Francisco, CA",
-        monthlyPrice: "2450.00",
-        depositAmount: "1200.00",
-        bedrooms: 1,
-        bathrooms: 1,
-        images: ["https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?ixlib=rb-4.0.3"],
-        amenities: ["High-Speed Internet", "AC", "Work Space", "City View", "Premium Finishes"],
-        internetSpeed: 100,
-        hasStableElectricity: true,
-        hasKitchen: true,
-        hasWorkspace: true,
-        hasAC: true,
-        hasCoffeeMachine: true,
-        rating: "4.90",
-        reviewCount: 127,
-        isVerified: true,
-        createdAt: new Date("2024-01-20")
-      },
-      {
-        id: "prop2",
-        hostId: "host1",
-        title: "Cozy Brooklyn Apartment", 
-        description: "Charming apartment in Brooklyn with modern kitchen, cozy atmosphere, and excellent neighborhood amenities.",
-        location: "Brooklyn, NY",
-        monthlyPrice: "1850.00",
-        depositAmount: "900.00",
-        bedrooms: 1,
-        bathrooms: 1,
-        images: ["https://images.unsplash.com/photo-1556912173-3bb406ef7e77?ixlib=rb-4.0.3"],
-        amenities: ["Ultra-Fast Internet", "Coffee Machine", "Full Kitchen", "Cozy Atmosphere"],
-        internetSpeed: 150,
-        hasStableElectricity: true,
-        hasKitchen: true,
-        hasWorkspace: false,
-        hasAC: false,
-        hasCoffeeMachine: true,
-        rating: "4.80",
-        reviewCount: 89,
-        isVerified: true,
-        createdAt: new Date("2024-02-10")
-      },
-      {
-        id: "prop3",
-        hostId: "host2",
-        title: "Designer Studio",
-        description: "A professionally designed studio perfect for remote work with fiber internet, ergonomic workspace, and modern amenities.",
-        location: "Austin, TX", 
-        monthlyPrice: "1650.00",
-        depositAmount: "800.00",
-        bedrooms: 0,
-        bathrooms: 1,
-        images: ["https://images.unsplash.com/photo-1586023492125-27b2c045efd7?ixlib=rb-4.0.3"],
-        amenities: ["Fiber Internet", "Monitor Included", "Backup Power", "Professional Setup"],
-        internetSpeed: 200,
-        hasStableElectricity: true,
-        hasKitchen: true,
-        hasWorkspace: true,
-        hasAC: true,
-        hasCoffeeMachine: false,
-        rating: "5.00",
-        reviewCount: 203,
-        isVerified: true,
-        createdAt: new Date("2024-03-01")
-      }
-    ];
-
-    properties.forEach(property => {
-      this.properties.set(property.id, property);
-    });
-  }
 
   // Method to reassign dummy properties to a real registered host
-  reassignPropertiesToRealHost() {
-    // Find the first real host user (not dummy users)
-    const realHost = Array.from(this.users.values()).find(user => 
-      user.isHost && !user.id.startsWith("host") && user.firstName && user.lastName
-    );
-    
-    if (realHost) {
-      // Reassign all properties to this real host
-      Array.from(this.properties.values()).forEach(property => {
-        if (property.hostId === "host1" || property.hostId === "host2") {
-          property.hostId = realHost.id;
-          this.properties.set(property.id, property);
-        }
-      });
-      console.log(`Reassigned properties to real host: ${realHost.firstName} ${realHost.lastName} (${realHost.id})`);
-    }
-  }
 }
 
 export class DatabaseStorage implements IStorage {
