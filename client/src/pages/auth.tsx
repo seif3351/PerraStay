@@ -81,6 +81,14 @@ export default function AuthPage() {
       // Store user data (authentication handled by httpOnly cookie)
       localStorage.setItem('user', JSON.stringify(user));
       
+      // Trigger storage event to update header component
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'user',
+        newValue: JSON.stringify(user),
+        oldValue: null,
+        storageArea: localStorage
+      }));
+      
       toast({
         title: 'Signed in!',
         description: `Welcome back, ${user.firstName}!`,
@@ -97,23 +105,56 @@ export default function AuthPage() {
 
   const onSignUp = async (data: SignUpFormData) => {
     try {
-      const response = await fetch('/api/users', {
+      // First, create the user account
+      const signUpResponse = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
       
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Sign up failed');
+      if (!signUpResponse.ok) {
+        const error = await signUpResponse.json();
+        throw new Error(error.message || 'Registration failed');
       }
+      
+      const user = await signUpResponse.json();
+      
+      // Now automatically sign in the user
+      const signInResponse = await fetch('/api/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+        }),
+        credentials: 'include',
+      });
+      
+      if (!signInResponse.ok) {
+        throw new Error('Account created but automatic sign-in failed. Please sign in manually.');
+      }
+      
+      const signInResult = await signInResponse.json();
+      const authenticatedUser = signInResult.user || signInResult;
+      
+      // Store user data (authentication handled by httpOnly cookie)
+      localStorage.setItem('user', JSON.stringify(authenticatedUser));
+      
+      // Trigger storage event to update header component
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'user',
+        newValue: JSON.stringify(authenticatedUser),
+        oldValue: null,
+        storageArea: localStorage
+      }));
       
       toast({
         title: 'Account created!',
-        description: 'You can now sign in with your credentials.',
+        description: `Welcome to Perra, ${authenticatedUser.firstName}!`,
       });
-      setMode('signin');
-      signInForm.setValue('email', data.email);
+      
+      // Redirect to appropriate dashboard
+      setLocation(authenticatedUser.isHost ? '/host-dashboard' : '/guest-dashboard');
     } catch (error) {
       toast({
         title: 'Sign up failed',
