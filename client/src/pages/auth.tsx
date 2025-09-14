@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Form, FormField, FormItem, FormLabel, FormMessage, FormControl } from "@/components/ui/form";
+import { Switch } from "@/components/ui/switch";
+import { Form, FormField, FormItem, FormLabel, FormMessage, FormControl, FormDescription } from "@/components/ui/form";
 
 const signInSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -19,6 +20,7 @@ const signUpSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  isHost: z.boolean().default(false),
 });
 
 type SignInFormData = z.infer<typeof signInSchema>;
@@ -44,6 +46,7 @@ export default function AuthPage() {
       lastName: "",
       email: "",
       password: "",
+      isHost: false,
     },
   });
 
@@ -137,6 +140,7 @@ export default function AuthPage() {
                         <Input
                           type="email"
                           placeholder="Enter your email"
+                          autoComplete="email"
                           data-testid="input-email"
                           {...field}
                         />
@@ -222,6 +226,7 @@ export default function AuthPage() {
                         <Input
                           type="email"
                           placeholder="Enter your email"
+                          autoComplete="email"
                           data-testid="input-email"
                           {...field}
                         />
@@ -245,6 +250,27 @@ export default function AuthPage() {
                         />
                       </FormControl>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={signUpForm.control}
+                  name="isHost"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base">Account Type</FormLabel>
+                        <FormDescription>
+                          {field.value ? "Sign up as a property host" : "Sign up as a guest"}
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="switch-account-type"
+                        />
+                      </FormControl>
                     </FormItem>
                   )}
                 />

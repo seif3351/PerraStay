@@ -12,6 +12,7 @@ const signUpSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Please enter a valid email address").transform(email => email.toLowerCase().trim()),
   password: z.string().min(6, "Password must be at least 6 characters"),
+  isHost: z.boolean().default(false),
 });
 
 const signInSchema = z.object({
@@ -53,6 +54,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         firstName: validatedInput.firstName,
         lastName: validatedInput.lastName,
         username: validatedInput.email,
+        isHost: validatedInput.isHost,
       };
       
       const user = await storage.createUser(userData);
