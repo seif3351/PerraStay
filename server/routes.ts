@@ -135,6 +135,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedUserData = insertUserSchema.parse(userData);
       const user = await storage.createUser(validatedUserData);
       
+      // If this is a host registration, reassign dummy properties to this real host
+      if (user.isHost && 'reassignPropertiesToRealHost' in storage) {
+        (storage as any).reassignPropertiesToRealHost();
+      }
+      
       // Don't return password in response
       const { password: _, ...userWithoutPassword } = user;
       res.status(201).json(userWithoutPassword);

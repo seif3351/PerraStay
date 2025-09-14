@@ -251,31 +251,8 @@ export class MemStorage implements IStorage {
   }
 
   private seedData() {
-    // Create sample users
-    const host1: User = {
-      id: "host1",
-      username: "sarah_host",
-      email: "sarah@example.com",
-      password: "hashed_password",
-      firstName: "Sarah",
-      lastName: "Johnson",
-      isHost: true,
-      createdAt: new Date("2024-01-15")
-    };
-    
-    const host2: User = {
-      id: "host2", 
-      username: "mike_host",
-      email: "mike@example.com",
-      password: "hashed_password",
-      firstName: "Mike",
-      lastName: "Chen",
-      isHost: true,
-      createdAt: new Date("2024-02-01")
-    };
-
-    this.users.set(host1.id, host1);
-    this.users.set(host2.id, host2);
+    // Don't create dummy users anymore - we'll use real registered users
+    // The properties will be assigned to real users when they register
 
     // Create sample properties
     const properties: Property[] = [
@@ -353,6 +330,25 @@ export class MemStorage implements IStorage {
     properties.forEach(property => {
       this.properties.set(property.id, property);
     });
+  }
+
+  // Method to reassign dummy properties to a real registered host
+  reassignPropertiesToRealHost() {
+    // Find the first real host user (not dummy users)
+    const realHost = Array.from(this.users.values()).find(user => 
+      user.isHost && !user.id.startsWith("host") && user.firstName && user.lastName
+    );
+    
+    if (realHost) {
+      // Reassign all properties to this real host
+      Array.from(this.properties.values()).forEach(property => {
+        if (property.hostId === "host1" || property.hostId === "host2") {
+          property.hostId = realHost.id;
+          this.properties.set(property.id, property);
+        }
+      });
+      console.log(`Reassigned properties to real host: ${realHost.firstName} ${realHost.lastName} (${realHost.id})`);
+    }
   }
 }
 
@@ -544,3 +540,10 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new MemStorage();
+
+// Reassign properties to any existing real hosts when server starts
+setTimeout(() => {
+  if ('reassignPropertiesToRealHost' in storage) {
+    (storage as any).reassignPropertiesToRealHost();
+  }
+}, 1000); // Wait 1 second to ensure any existing users are loaded

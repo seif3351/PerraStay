@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,6 +30,17 @@ export default function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // Check URL parameters to determine initial mode
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const modeParam = urlParams.get('mode');
+    const signupParam = urlParams.get('signup');
+    
+    if (modeParam === 'signup' || signupParam === 'true') {
+      setMode('signup');
+    }
+  }, []);
 
   const signInForm = useForm<SignInFormData>({
     resolver: zodResolver(signInSchema),
