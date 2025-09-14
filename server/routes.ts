@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertBookingSchema, insertReviewSchema, insertDeliveryOrderSchema } from "@shared/schema";
+import { insertPropertySchema, insertBookingSchema, insertReviewSchema, insertDeliveryOrderSchema, insertUserSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Properties routes
@@ -131,6 +131,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(order);
     } catch (error) {
       res.status(500).json({ message: "Failed to update delivery order" });
+    }
+  });
+
+  // User registration route
+  app.post("/api/users", async (req, res) => {
+    try {
+      const { email, password, firstName, lastName } = req.body;
+      if (!email || !password || !firstName || !lastName) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      // username can be email for simplicity
+      const userData = {
+        email,
+        password,
+        firstName,
+        lastName,
+        username: email,
+      };
+      const validatedData = insertUserSchema.parse(userData);
+      const user = await storage.createUser(validatedData);
+      res.status(201).json(user);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid user data" });
     }
   });
 

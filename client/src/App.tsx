@@ -12,6 +12,7 @@ import GuestDashboard from "@/pages/guest-dashboard";
 import AddProperty from "@/pages/add-property";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
+import AuthPage from "./pages/auth";
 
 function Router() {
   return (
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/host-dashboard" component={HostDashboard} />
       <Route path="/guest-dashboard" component={GuestDashboard} />
       <Route path="/add-property" component={AddProperty} />
+      <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
   );

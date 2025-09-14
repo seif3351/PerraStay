@@ -59,12 +59,20 @@ export default function Header() {
                     Host Dashboard
                   </Link>
                   <div className="border-t border-gray-100 my-1"></div>
-                  <button className="block w-full text-left px-4 py-2 text-sm text-perra-gray hover:bg-gray-50">
+                  <Link 
+                    href="/auth"
+                    className="block w-full text-left px-4 py-2 text-sm text-perra-gray hover:bg-gray-50"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
                     Sign In
-                  </button>
-                  <button className="block w-full text-left px-4 py-2 text-sm text-perra-gray hover:bg-gray-50">
+                  </Link>
+                  <Link 
+                    href="/auth"
+                    className="block w-full text-left px-4 py-2 text-sm text-perra-gray hover:bg-gray-50"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
                     Sign Up
-                  </button>
+                  </Link>
                 </div>
               )}
             </div>
