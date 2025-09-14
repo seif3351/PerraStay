@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPropertySchema, insertBookingSchema, insertReviewSchema, insertDeliveryOrderSchema, insertUserSchema } from "@shared/schema";
@@ -26,6 +26,81 @@ if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
   throw new Error('JWT_SECRET environment variable is required in production');
 }
 const jwtSecret = JWT_SECRET || "perra-dev-secret-not-for-production";
+
+// Extend Request type to include user info
+interface AuthenticatedRequest extends Request {
+  user?: {
+    userId: string;
+    email: string;
+    isHost: boolean;
+  };
+}
+
+// Authentication middleware to verify JWT tokens
+const authenticateToken = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const token = req.cookies['auth-token'];
+    
+    if (!token) {
+      return res.status(401).json({ 
+        code: "UNAUTHORIZED", 
+        message: "Authentication required" 
+      });
+    }
+
+    // Verify JWT token
+    const decoded = jwt.verify(token, jwtSecret) as { 
+      userId: string; 
+      email: string; 
+      isHost: boolean; 
+    };
+
+    // Verify user still exists
+    const user = await storage.getUser(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ 
+        code: "UNAUTHORIZED", 
+        message: "User not found" 
+      });
+    }
+
+    // Attach user info to request
+    req.user = {
+      userId: decoded.userId,
+      email: decoded.email,
+      isHost: decoded.isHost
+    };
+
+    next();
+  } catch (error) {
+    return res.status(401).json({ 
+      code: "UNAUTHORIZED", 
+      message: "Invalid or expired token" 
+    });
+  }
+};
+
+// Authorization middleware for hosts only
+const requireHost = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!req.user?.isHost) {
+    return res.status(403).json({ 
+      code: "FORBIDDEN", 
+      message: "Host privileges required" 
+    });
+  }
+  next();
+};
+
+// Authorization middleware for guests only
+const requireGuest = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (req.user?.isHost) {
+    return res.status(403).json({ 
+      code: "FORBIDDEN", 
+      message: "Guest privileges required" 
+    });
+  }
+  next();
+};
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
@@ -181,17 +256,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/properties", async (req, res) => {
+  app.post("/api/properties", authenticateToken, requireHost, async (req: AuthenticatedRequest, res) => {
     try {
-      console.log("Received data:", JSON.stringify(req.body, null, 2));
       const validatedData = insertPropertySchema.parse(req.body);
-      console.log("Validated data:", JSON.stringify(validatedData, null, 2));
-      const property = await storage.createProperty(validatedData);
-      console.log("Created property:", JSON.stringify(property, null, 2));
+      // Use authenticated user's ID as hostId instead of trusting client
+      const propertyData = {
+        ...validatedData,
+        hostId: req.user!.userId
+      };
+      const property = await storage.createProperty(propertyData);
       res.status(201).json(property);
     } catch (error) {
-      console.error("Property creation error:", error);
-      console.error("Error details:", error instanceof Error ? error.message : String(error));
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          code: "VALIDATION_ERROR", 
+          message: "Invalid property data", 
+          errors: error.errors 
+        });
+      }
       res.status(400).json({ message: "Invalid property data", error: error instanceof Error ? error.message : String(error) });
     }
   });
@@ -206,10 +288,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Bookings routes
-  app.post("/api/bookings", async (req, res) => {
+  app.post("/api/bookings", authenticateToken, requireGuest, async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertBookingSchema.parse(req.body);
-      const booking = await storage.createBooking(validatedData);
+      // Use authenticated user's ID as guestId instead of trusting client
+      const bookingData = {
+        ...validatedData,
+        guestId: req.user!.userId
+      };
+      const booking = await storage.createBooking(bookingData);
       res.status(201).json(booking);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -223,33 +310,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/bookings/guest/:guestId", async (req, res) => {
+  app.get("/api/bookings/guest", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
-      const bookings = await storage.getBookingsByGuest(req.params.guestId);
+      // Only allow users to get their own bookings
+      const bookings = await storage.getBookingsByGuest(req.user!.userId);
       res.json(bookings);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch bookings" });
     }
   });
 
-  app.patch("/api/bookings/:id/status", async (req, res) => {
+  app.get("/api/bookings/host", authenticateToken, requireHost, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Get all properties owned by the authenticated host
+      const hostProperties = await storage.getPropertiesByHost(req.user!.userId);
+      
+      // Get all bookings for those properties
+      const allBookings = [];
+      for (const property of hostProperties) {
+        const propertyBookings = await storage.getBookingsByProperty(property.id);
+        // Add property info to each booking for context
+        const bookingsWithProperty = propertyBookings.map(booking => ({
+          ...booking,
+          property: property
+        }));
+        allBookings.push(...bookingsWithProperty);
+      }
+      
+      res.json(allBookings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch host bookings" });
+    }
+  });
+
+  app.patch("/api/bookings/:id/status", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const { status } = req.body;
-      const booking = await storage.updateBookingStatus(req.params.id, status);
+      
+      // First, get the booking to check ownership
+      const booking = await storage.getBooking(req.params.id);
       if (!booking) {
         return res.status(404).json({ message: "Booking not found" });
       }
-      res.json(booking);
+      
+      // Check authorization based on user role
+      if (req.user!.isHost) {
+        // Hosts can only update bookings for their own properties
+        const property = await storage.getProperty(booking.propertyId);
+        if (!property || property.hostId !== req.user!.userId) {
+          return res.status(403).json({ 
+            code: "FORBIDDEN", 
+            message: "You can only update bookings for your own properties" 
+          });
+        }
+      } else {
+        // Guests can only cancel their own bookings
+        if (booking.guestId !== req.user!.userId) {
+          return res.status(403).json({ 
+            code: "FORBIDDEN", 
+            message: "You can only update your own bookings" 
+          });
+        }
+        // Guests can only cancel (restrict status changes)
+        if (status !== "cancelled") {
+          return res.status(403).json({ 
+            code: "FORBIDDEN", 
+            message: "Guests can only cancel bookings" 
+          });
+        }
+      }
+      
+      const updatedBooking = await storage.updateBookingStatus(req.params.id, status);
+      res.json(updatedBooking);
     } catch (error) {
       res.status(500).json({ message: "Failed to update booking" });
     }
   });
 
   // Reviews routes
-  app.post("/api/reviews", async (req, res) => {
+  app.post("/api/reviews", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertReviewSchema.parse(req.body);
-      const review = await storage.createReview(validatedData);
+      // Use authenticated user's ID as guestId instead of trusting client
+      const reviewData = {
+        ...validatedData,
+        guestId: req.user!.userId
+      };
+      const review = await storage.createReview(reviewData);
       res.status(201).json(review);
     } catch (error) {
       res.status(400).json({ message: "Invalid review data" });
@@ -257,33 +404,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delivery routes
-  app.post("/api/delivery-orders", async (req, res) => {
+  app.post("/api/delivery-orders", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertDeliveryOrderSchema.parse(req.body);
-      const order = await storage.createDeliveryOrder(validatedData);
+      // Use authenticated user's ID as guestId instead of trusting client
+      const orderData = {
+        ...validatedData,
+        guestId: req.user!.userId
+      };
+      const order = await storage.createDeliveryOrder(orderData);
       res.status(201).json(order);
     } catch (error) {
       res.status(400).json({ message: "Invalid delivery order data" });
     }
   });
 
-  app.get("/api/delivery-orders/guest/:guestId", async (req, res) => {
+  app.get("/api/delivery-orders/guest", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
-      const orders = await storage.getDeliveryOrdersByGuest(req.params.guestId);
+      // Only allow users to get their own delivery orders
+      const orders = await storage.getDeliveryOrdersByGuest(req.user!.userId);
       res.json(orders);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch delivery orders" });
     }
   });
 
-  app.patch("/api/delivery-orders/:id/status", async (req, res) => {
+  app.patch("/api/delivery-orders/:id/status", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const { status } = req.body;
-      const order = await storage.updateDeliveryOrderStatus(req.params.id, status);
+      
+      // First, get the delivery order to check ownership
+      const order = await storage.getDeliveryOrder(req.params.id);
       if (!order) {
         return res.status(404).json({ message: "Delivery order not found" });
       }
-      res.json(order);
+      
+      // Only allow users to update their own delivery orders
+      if (order.guestId !== req.user!.userId) {
+        return res.status(403).json({ 
+          code: "FORBIDDEN", 
+          message: "You can only update your own delivery orders" 
+        });
+      }
+      
+      const updatedOrder = await storage.updateDeliveryOrderStatus(req.params.id, status);
+      res.json(updatedOrder);
     } catch (error) {
       res.status(500).json({ message: "Failed to update delivery order" });
     }

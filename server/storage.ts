@@ -40,6 +40,7 @@ export interface IStorage {
   createReview(review: InsertReview): Promise<Review>;
   
   // Delivery operations
+  getDeliveryOrder(id: string): Promise<DeliveryOrder | undefined>;
   getDeliveryOrdersByGuest(guestId: string): Promise<DeliveryOrder[]>;
   createDeliveryOrder(order: InsertDeliveryOrder): Promise<DeliveryOrder>;
   updateDeliveryOrderStatus(id: string, status: string): Promise<DeliveryOrder | undefined>;
@@ -66,14 +67,14 @@ export class MemStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    // If using a real DB, insert and return the user
-    const [user] = await db
-      .insert(users)
-      .values({
-        ...insertUser,
-        isHost: insertUser.isHost ?? false,
-      })
-      .returning();
+    const id = randomUUID();
+    const user: User = {
+      ...insertUser,
+      id,
+      isHost: insertUser.isHost ?? false,
+      createdAt: new Date(),
+    };
+    this.users.set(id, user);
     return user;
   }
 
@@ -218,6 +219,10 @@ export class MemStorage implements IStorage {
   }
 
   // Delivery operations
+  async getDeliveryOrder(id: string): Promise<DeliveryOrder | undefined> {
+    return this.deliveryOrders.get(id);
+  }
+
   async getDeliveryOrdersByGuest(guestId: string): Promise<DeliveryOrder[]> {
     return Array.from(this.deliveryOrders.values()).filter(o => o.guestId === guestId);
   }
@@ -506,6 +511,11 @@ export class DatabaseStorage implements IStorage {
     return review;
   }
 
+  async getDeliveryOrder(id: string): Promise<DeliveryOrder | undefined> {
+    const [order] = await db.select().from(deliveryOrders).where(eq(deliveryOrders.id, id));
+    return order || undefined;
+  }
+
   async getDeliveryOrdersByGuest(guestId: string): Promise<DeliveryOrder[]> {
     return await db.select().from(deliveryOrders).where(eq(deliveryOrders.guestId, guestId));
   }
@@ -533,4 +543,4 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemStorage();
