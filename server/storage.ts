@@ -539,11 +539,4 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
-
-// Reassign properties to any existing real hosts when server starts
-setTimeout(() => {
-  if ('reassignPropertiesToRealHost' in storage) {
-    (storage as any).reassignPropertiesToRealHost();
-  }
-}, 1000); // Wait 1 second to ensure any existing users are loaded
+export const storage = new DatabaseStorage();
