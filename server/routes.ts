@@ -212,7 +212,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const booking = await storage.createBooking(validatedData);
       res.status(201).json(booking);
     } catch (error) {
-      res.status(400).json({ message: "Invalid booking data" });
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          code: "VALIDATION_ERROR", 
+          message: "Invalid booking data", 
+          errors: error.errors 
+        });
+      }
+      res.status(400).json({ message: "Invalid booking data", error: error instanceof Error ? error.message : String(error) });
     }
   });
 
