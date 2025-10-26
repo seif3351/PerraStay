@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingSpinner } from "@/components/ui/loading";
-import { Calendar, Package, MapPin, Clock, Star, ShoppingCart } from "lucide-react";
+import { Calendar, Package, MapPin, Clock, Star, ShoppingCart, Camera } from "lucide-react";
 
 export default function GuestDashboard() {
   const [activeTab, setActiveTab] = useState("bookings");
@@ -118,17 +118,33 @@ export default function GuestDashboard() {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="font-semibold text-lg">{property.title}</h3>
-                <Badge 
-                  className={
-                    status === 'active' ? 'bg-green-100 text-green-800' :
-                    status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
-                    undefined
-                  }
-                >
-                  {status === 'active' ? 'Active' :
-                   status === 'upcoming' ? 'Confirmed' :
-                   'Completed'}
-                </Badge>
+                <div className="flex gap-2">
+                  <Badge 
+                    className={
+                      status === 'active' ? 'bg-green-100 text-green-800' :
+                      status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                      undefined
+                    }
+                  >
+                    {status === 'active' ? 'Active' :
+                     status === 'upcoming' ? 'Confirmed' :
+                     'Completed'}
+                  </Badge>
+                  
+                  {/* Photo Upload Status */}
+                  {booking.checkInPhotosUploaded && (
+                    <Badge variant="outline" className="text-xs">
+                      <Camera className="h-3 w-3 mr-1" />
+                      Check-in ✓
+                    </Badge>
+                  )}
+                  {booking.checkOutPhotosUploaded && (
+                    <Badge variant="outline" className="text-xs">
+                      <Camera className="h-3 w-3 mr-1" />
+                      Check-out ✓
+                    </Badge>
+                  )}
+                </div>
               </div>
               <div className="flex items-center text-perra-gray mb-2">
                 <MapPin className="w-4 h-4 mr-1" />

@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAuthGuard } from "@/hooks/use-auth-guard";
 import { LoadingSpinner } from "@/components/ui/loading";
-import { ArrowLeft, Calendar, DollarSign, Home, UserCircle, MapPin, Wifi, Key, Phone, Clock, Gift, ExternalLink } from "lucide-react";
+import { ArrowLeft, Calendar, DollarSign, Home, UserCircle, MapPin, Wifi, Key, Phone, Clock, Gift, ExternalLink, Camera, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { BookingPhotoUpload } from "@/components/booking-photo-upload";
+import { BookingPhotoGallery } from "@/components/booking-photo-gallery";
 import type { Booking, Property, User, PropertyAccessInfo } from "@shared/schema";
 
 interface BookingWithDetails extends Booking {
@@ -406,6 +409,151 @@ export default function BookingDetail() {
                   </Accordion>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Check-in Photos - For guests to upload on check-in date */}
+            {isGuest && (booking.status === 'confirmed' || booking.status === 'active' || booking.status === 'completed') && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="h-5 w-5" />
+                    Check-in Photos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {(() => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const checkIn = new Date(booking.checkInDate);
+                    checkIn.setHours(0, 0, 0, 0);
+                    const daysDiff = Math.floor((checkIn.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                    const canUploadCheckIn = daysDiff === 0; // Can upload on check-in day
+
+                    if (!canUploadCheckIn && daysDiff > 0) {
+                      return (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            You can upload check-in photos on your check-in date ({new Date(booking.checkInDate).toLocaleDateString()})
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    } else if (!canUploadCheckIn && daysDiff < 0) {
+                      return (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            Check-in photo upload period has passed
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    }
+
+                    return <BookingPhotoUpload bookingId={booking.id} photoType="check_in" />;
+                  })()}
+                  
+                  {/* Show uploaded check-in photos */}
+                  <div>
+                    <h4 className="font-semibold mb-3">Uploaded Photos</h4>
+                    <BookingPhotoGallery 
+                      bookingId={booking.id} 
+                      photoType="check_in"
+                      canDelete={true}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Check-out Photos - For guests to upload on check-out date */}
+            {isGuest && (booking.status === 'confirmed' || booking.status === 'active' || booking.status === 'completed') && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="h-5 w-5" />
+                    Check-out Photos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {(() => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const checkOut = new Date(booking.checkOutDate);
+                    checkOut.setHours(0, 0, 0, 0);
+                    const daysDiff = Math.floor((checkOut.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                    const canUploadCheckOut = daysDiff === 0; // Can upload on check-out day
+
+                    if (!canUploadCheckOut && daysDiff > 0) {
+                      return (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            You can upload check-out photos on your check-out date ({new Date(booking.checkOutDate).toLocaleDateString()})
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    } else if (!canUploadCheckOut && daysDiff < 0) {
+                      return (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            Check-out photo upload period has passed
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    }
+
+                    return <BookingPhotoUpload bookingId={booking.id} photoType="check_out" />;
+                  })()}
+                  
+                  {/* Show uploaded check-out photos */}
+                  <div>
+                    <h4 className="font-semibold mb-3">Uploaded Photos</h4>
+                    <BookingPhotoGallery 
+                      bookingId={booking.id} 
+                      photoType="check_out"
+                      canDelete={true}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* For hosts - View all photos */}
+            {!isGuest && (booking.status === 'confirmed' || booking.status === 'active' || booking.status === 'completed') && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Camera className="h-5 w-5" />
+                      Guest Check-in Photos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <BookingPhotoGallery 
+                      bookingId={booking.id} 
+                      photoType="check_in"
+                      canDelete={false}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Camera className="h-5 w-5" />
+                      Guest Check-out Photos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <BookingPhotoGallery 
+                      bookingId={booking.id} 
+                      photoType="check_out"
+                      canDelete={false}
+                    />
+                  </CardContent>
+                </Card>
+              </>
             )}
           </div>
 

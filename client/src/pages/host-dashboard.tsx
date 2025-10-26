@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PropertyCard from "@/components/property-card";
 import { useAuthGuard } from "@/hooks/use-auth-guard";
 import { LoadingSpinner } from "@/components/ui/loading";
-import { Plus, Home, Calendar, DollarSign, Users, TrendingUp, Sparkles, CheckCircle, Key } from "lucide-react";
+import { Plus, Home, Calendar, DollarSign, Users, TrendingUp, Sparkles, CheckCircle, Key, Camera } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -250,13 +250,31 @@ export default function HostDashboard() {
                               Booking {booking.status} • ${booking.totalAmount}
                             </p>
                           </div>
-                          <Badge variant={
-                            booking.status === "active" ? "default" :
-                            booking.status === "confirmed" ? "secondary" :
-                            booking.status === "pending" ? "outline" : "destructive"
-                          }>
-                            {booking.status}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={
+                              booking.status === "active" ? "default" :
+                              booking.status === "confirmed" ? "secondary" :
+                              booking.status === "pending" ? "outline" : "destructive"
+                            }>
+                              {booking.status}
+                            </Badge>
+                            {(booking.status === "active" || booking.status === "confirmed" || booking.status === "completed") && (
+                              <div className="flex gap-1">
+                                {booking.checkInPhotosUploaded && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <Camera className="h-3 w-3 mr-1" />
+                                    Check-in ✓
+                                  </Badge>
+                                )}
+                                {booking.checkOutPhotosUploaded && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <Camera className="h-3 w-3 mr-1" />
+                                    Check-out ✓
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -346,6 +364,25 @@ export default function HostDashboard() {
                             }>
                               {booking.status}
                             </Badge>
+                            
+                            {/* Photo Upload Status */}
+                            {(booking.status === "active" || booking.status === "confirmed" || booking.status === "completed") && (
+                              <div className="flex flex-col gap-1 mb-2">
+                                {booking.checkInPhotosUploaded && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <Camera className="h-3 w-3 mr-1" />
+                                    Check-in ✓
+                                  </Badge>
+                                )}
+                                {booking.checkOutPhotosUploaded && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <Camera className="h-3 w-3 mr-1" />
+                                    Check-out ✓
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                            
                             {booking.status === "pending" && (
                               <div className="space-y-2">
                                 <Button 

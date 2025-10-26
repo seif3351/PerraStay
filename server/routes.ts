@@ -16,6 +16,7 @@ import {
   insertUserSchema,
   insertPropertyAccessInfoSchema,
   users,
+  bookings,
   type User,
   type Booking
 } from "@shared/schema";
@@ -1151,6 +1152,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid access info data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to update property access info" });
+    }
+  });
+
+  // Booking Photos routes
+  app.get("/api/bookings/:id/photos", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Get the booking to check authorization
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Get property to check if user is host
+      const property = await storage.getProperty(booking.propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Only booking guest or property host can view photos
+      const isGuest = booking.guestId === req.user!.userId;
+      const isHost = property.hostId === req.user!.userId;
+
+      if (!isGuest && !isHost) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "Only the guest or host can view booking photos" });
+      }
+
+      const photos = await storage.getBookingPhotos(req.params.id);
+      res.json(photos);
+    } catch (error) {
+      console.error("Failed to fetch booking photos:", error);
+      res.status(500).json({ message: "Failed to fetch booking photos" });
+    }
+  });
+
+  app.post("/api/bookings/:id/photos",
+    authenticateToken,
+    (req, res, next) => upload.array('photos', 10)(req, res, err => handleMulterError(err, req, res, next)),
+    async (req: AuthenticatedRequest, res) => {
+      console.log('=== PHOTO UPLOAD ROUTE HIT ===');
+      console.log('Booking ID:', req.params.id);
+      console.log('User ID:', req.user?.userId);
+      console.log('Files:', req.files);
+      console.log('Body:', req.body);
+      
+      try {
+        const { photoType, description } = req.body;
+        
+        if (!photoType || (photoType !== 'check_in' && photoType !== 'check_out')) {
+          return res.status(400).json({ message: "Invalid photo type. Must be 'check_in' or 'check_out'" });
+        }
+
+        // Get the booking to check authorization
+        const booking = await storage.getBooking(req.params.id);
+        if (!booking) {
+          return res.status(404).json({ message: "Booking not found" });
+        }
+
+        // Only the guest can upload photos
+        if (booking.guestId !== req.user!.userId) {
+          return res.status(403).json({ code: "FORBIDDEN", message: "Only the guest can upload photos" });
+        }
+
+        // Check if we have files
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+          return res.status(400).json({ message: "No photos uploaded" });
+        }
+
+        // Create photo records for each uploaded file
+        const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+        const photoPromises = files.map(file => {
+          const photoUrl = `${baseUrl}/uploads/${file.filename}`;
+          return storage.createBookingPhoto({
+            bookingId: req.params.id,
+            photoUrl,
+            photoType,
+            description: description || null
+          });
+        });
+
+        const photos = await Promise.all(photoPromises);
+
+        // Update booking flags
+        if (photoType === 'check_in') {
+          await db.update(bookings)
+            .set({ checkInPhotosUploaded: true })
+            .where(eq(bookings.id, req.params.id));
+        } else if (photoType === 'check_out') {
+          await db.update(bookings)
+            .set({ checkOutPhotosUploaded: true })
+            .where(eq(bookings.id, req.params.id));
+        }
+
+        res.status(201).json(photos);
+      } catch (error) {
+        console.error("Failed to upload booking photos:", error);
+        res.status(500).json({ message: "Failed to upload booking photos" });
+      }
+    }
+  );
+
+  app.delete("/api/bookings/:bookingId/photos/:photoId", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Get the booking to check authorization
+      const booking = await storage.getBooking(req.params.bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Only the guest can delete photos
+      if (booking.guestId !== req.user!.userId) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "Only the guest can delete photos" });
+      }
+
+      await storage.deleteBookingPhoto(req.params.photoId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete booking photo:", error);
+      res.status(500).json({ message: "Failed to delete booking photo" });
     }
   });
 

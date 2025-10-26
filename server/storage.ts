@@ -1,11 +1,12 @@
 import { 
-  users, properties, bookings, reviews, deliveryOrders, propertyAccessInfo,
+  users, properties, bookings, reviews, deliveryOrders, propertyAccessInfo, bookingPhotos,
   type User, type InsertUser,
   type Property, type InsertProperty,
   type Booking, type InsertBooking,
   type Review, type InsertReview,
   type DeliveryOrder, type InsertDeliveryOrder,
-  type PropertyAccessInfo, type InsertPropertyAccessInfo
+  type PropertyAccessInfo, type InsertPropertyAccessInfo,
+  type BookingPhoto, type InsertBookingPhoto
 } from "@shared/schema";
 import { and } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -57,6 +58,12 @@ export interface IStorage {
   getPropertyAccessInfo(propertyId: string): Promise<PropertyAccessInfo | undefined>;
   createPropertyAccessInfo(accessInfo: InsertPropertyAccessInfo): Promise<PropertyAccessInfo>;
   updatePropertyAccessInfo(propertyId: string, updates: Partial<InsertPropertyAccessInfo>): Promise<PropertyAccessInfo | undefined>;
+  
+  // Booking Photos operations
+  getBookingPhotos(bookingId: string): Promise<BookingPhoto[]>;
+  getBookingPhotosByType(bookingId: string, photoType: string): Promise<BookingPhoto[]>;
+  createBookingPhoto(photo: InsertBookingPhoto): Promise<BookingPhoto>;
+  deleteBookingPhoto(id: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -512,6 +519,40 @@ export class DbStorage implements IStorage {
       .where(eq(propertyAccessInfo.propertyId, propertyId))
       .returning();
     return updated || undefined;
+  }
+
+  // Booking Photos operations
+  async getBookingPhotos(bookingId: string): Promise<BookingPhoto[]> {
+    return await db
+      .select()
+      .from(bookingPhotos)
+      .where(eq(bookingPhotos.bookingId, bookingId));
+  }
+
+  async getBookingPhotosByType(bookingId: string, photoType: string): Promise<BookingPhoto[]> {
+    return await db
+      .select()
+      .from(bookingPhotos)
+      .where(and(
+        eq(bookingPhotos.bookingId, bookingId),
+        eq(bookingPhotos.photoType, photoType)
+      ));
+  }
+
+  async createBookingPhoto(insertPhoto: InsertBookingPhoto): Promise<BookingPhoto> {
+    const [photo] = await db
+      .insert(bookingPhotos)
+      .values({
+        ...insertPhoto,
+        id: randomUUID(),
+        uploadedAt: new Date()
+      })
+      .returning();
+    return photo;
+  }
+
+  async deleteBookingPhoto(id: string): Promise<void> {
+    await db.delete(bookingPhotos).where(eq(bookingPhotos.id, id));
   }
 }
 
