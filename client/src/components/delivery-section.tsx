@@ -1,7 +1,23 @@
 import { Button } from "@/components/ui/button";
 import { Utensils, ShoppingBasket, Clock, CheckCircle } from "lucide-react";
 
+import { useAuthGuard } from "@/hooks/use-auth-guard";
+import { LoadingSpinner } from "@/components/ui/loading";
+
 export default function DeliverySection() {
+  // Check authentication status (optional - just for showing personalized content)
+  const { isChecking, user } = useAuthGuard(false, false);
+
+  if (isChecking) {
+    return (
+      <section className="bg-gradient-to-r from-perra-gold-light to-white py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+          <LoadingSpinner />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="bg-gradient-to-r from-perra-gold-light to-white py-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

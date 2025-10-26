@@ -11,6 +11,15 @@ export const users = pgTable("users", {
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   isHost: boolean("is_host").default(false),
+  emailVerified: boolean("email_verified").default(false),
+  verificationToken: text("verification_token"),
+  verificationTokenExpiry: timestamp("verification_token_expiry"),
+  resetPasswordToken: text("reset_password_token"),
+  resetPasswordExpiry: timestamp("reset_password_token_expiry"),
+  lastPasswordChange: timestamp("last_password_change"),
+  failedLoginAttempts: integer("failed_login_attempts").default(0),
+  lastFailedLogin: timestamp("last_failed_login"),
+  lockedUntil: timestamp("locked_until"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -79,12 +88,17 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
 });
 
-export const insertPropertySchema = createInsertSchema(properties).omit({
-  id: true,
-  createdAt: true,
-  rating: true,
-  reviewCount: true,
-});
+export const insertPropertySchema = createInsertSchema(properties)
+  .omit({
+    id: true,
+    createdAt: true,
+    rating: true,
+    reviewCount: true,
+  })
+  .extend({
+    images: z.array(z.string().url("Invalid image URL")).max(10, "Maximum 10 images allowed"),
+    amenities: z.array(z.string()).default([])
+  });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({
   id: true,

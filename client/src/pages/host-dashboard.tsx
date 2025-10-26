@@ -1,37 +1,78 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { type Property, type Booking } from "@shared/schema";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { type Property, type Booking, type User } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PropertyCard from "@/components/property-card";
-import { Plus, Home, Calendar, DollarSign, Users, TrendingUp } from "lucide-react";
-import { Link } from "wouter";
+import { useAuthGuard } from "@/hooks/use-auth-guard";
+import { LoadingSpinner } from "@/components/ui/loading";
+import { Plus, Home, Calendar, DollarSign, Users, TrendingUp, Sparkles, CheckCircle } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function HostDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
-  const hostId = "host1"; // In a real app, this would come from auth
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  // Check authentication only (not host requirement - we'll handle that manually)
+  const { isChecking, user: authUser } = useAuthGuard(true, false);
 
-  const { data: properties = [] } = useQuery<Property[]>({
-    queryKey: ["/api/properties", { hostId }],
-    queryFn: async () => {
-      const response = await fetch(`/api/properties?hostId=${hostId}`);
-      return response.json();
+  // Mutation to upgrade user to host
+  const upgradeToHostMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/users/upgrade-to-host', {}),
+    onSuccess: (data: any) => {
+      // Update local storage with new user data
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+      
+      // Close upgrade modal and show success modal
+      setShowUpgradeModal(false);
+      setShowSuccessModal(true);
+      
+      // Invalidate queries to refetch with new host status
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      
+      toast({
+        title: 'Welcome to hosting!',
+        description: 'Your account has been upgraded. You can now list properties.',
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Upgrade failed',
+        description: 'Failed to upgrade your account. Please try again.',
+        variant: 'destructive',
+      });
     },
   });
 
-  const { data: allBookings = [] } = useQuery<Booking[]>({
-    queryKey: ["/api/bookings", { hostId }],
+  // Fetch host's properties
+  const { data: properties = [] } = useQuery<Property[]>({
+    queryKey: ["/api/properties/host"],
     queryFn: async () => {
-      // In a real implementation, we'd have a specific endpoint for host bookings
-      const response = await fetch("/api/bookings");
-      const bookings = await response.json();
-      return bookings.filter((booking: Booking) =>
-        properties.some(property => property.id === booking.propertyId)
-      );
+      const response = await fetch(`/api/properties?hostId=${authUser?.id}`);
+      return response.json();
     },
-    enabled: properties.length > 0,
+    enabled: !isChecking && !!authUser?.id,
+  });
+
+  const { data: allBookings = [] } = useQuery<Booking[]>({
+    queryKey: ["/api/bookings/host"],
+    queryFn: async () => {
+      const response = await fetch(`/api/bookings/host`);
+      return response.json();
+    },
+    enabled: !isChecking && !!authUser?.id && properties.length > 0,
   });
 
   const totalRevenue = allBookings.reduce((sum, booking) => 
@@ -41,6 +82,22 @@ export default function HostDashboard() {
   const activeBookings = allBookings.filter(booking => 
     booking.status === "active" || booking.status === "confirmed"
   );
+
+  // Check if user needs to upgrade to host - use useEffect to avoid state update during render
+  useEffect(() => {
+    if (authUser && !authUser.isHost && !showUpgradeModal && !showSuccessModal) {
+      setShowUpgradeModal(true);
+    }
+  }, [authUser, showUpgradeModal, showSuccessModal]);
+
+  // Show loading state while checking auth - AFTER all hooks
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -288,6 +345,122 @@ export default function HostDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Upgrade to Host Modal */}
+      <Dialog open={showUpgradeModal} onOpenChange={setShowUpgradeModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-perra-gold" />
+              Become a Host
+            </DialogTitle>
+            <DialogDescription>
+              Start earning by listing your properties on PerraStay
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                <div>
+                  <h4 className="font-medium">List Your Properties</h4>
+                  <p className="text-sm text-gray-600">Share your space with travelers from around the world</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                <div>
+                  <h4 className="font-medium">Earn Extra Income</h4>
+                  <p className="text-sm text-gray-600">Set your own prices and availability</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                <div>
+                  <h4 className="font-medium">Verified & Secure</h4>
+                  <p className="text-sm text-gray-600">All bookings are protected with secure deposits</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUpgradeModal(false);
+                setLocation('/guest-dashboard');
+              }}
+            >
+              Maybe Later
+            </Button>
+            <Button
+              className="bg-perra-gold hover:bg-perra-gold/90"
+              onClick={() => upgradeToHostMutation.mutate()}
+              disabled={upgradeToHostMutation.isPending}
+            >
+              {upgradeToHostMutation.isPending ? 'Upgrading...' : 'Become a Host'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success & Tutorial Modal */}
+      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="w-6 h-6" />
+              Welcome to Hosting!
+            </DialogTitle>
+            <DialogDescription>
+              You're now a PerraStay host. Here's how to get started:
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <Alert>
+              <Home className="h-4 w-4" />
+              <AlertTitle>Step 1: Add Your First Property</AlertTitle>
+              <AlertDescription>
+                Click the "Add Property" button to create your first listing with photos, amenities, and pricing.
+              </AlertDescription>
+            </Alert>
+            
+            <Alert>
+              <Users className="h-4 w-4" />
+              <AlertTitle>Step 2: Manage Bookings</AlertTitle>
+              <AlertDescription>
+                Review and approve booking requests from guests. You'll receive notifications for new requests.
+              </AlertDescription>
+            </Alert>
+            
+            <Alert>
+              <TrendingUp className="h-4 w-4" />
+              <AlertTitle>Step 3: Track Your Earnings</AlertTitle>
+              <AlertDescription>
+                Monitor your revenue and property performance in the Analytics tab.
+              </AlertDescription>
+            </Alert>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              className="w-full bg-perra-gold hover:bg-perra-gold/90"
+              onClick={() => {
+                setShowSuccessModal(false);
+                // Refresh the page to show host dashboard
+                window.location.reload();
+              }}
+            >
+              Got it, let's start!
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

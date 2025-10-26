@@ -34,9 +34,17 @@ export default function Header() {
 
   const handleSignOut = async () => {
     try {
+      // Get CSRF token first
+      const csrfResponse = await fetch('/api/csrf-token');
+      const { csrfToken } = await csrfResponse.json();
+
       const response = await fetch('/api/signout', {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'CSRF-Token': csrfToken
+        }
       });
       
       if (response.ok) {
@@ -56,6 +64,7 @@ export default function Header() {
         throw new Error('Sign out failed');
       }
     } catch (error) {
+      console.error('Sign out error:', error);
       toast({
         title: 'Sign out failed',
         description: 'Please try again.',

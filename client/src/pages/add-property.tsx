@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,29 +15,85 @@ import { apiRequest } from "@/lib/queryClient";
 import { insertPropertySchema, type InsertProperty } from "@shared/schema";
 import { z } from "zod";
 import { Home, MapPin, DollarSign, Bed, Bath, Wifi, Zap, Coffee, Snowflake, Briefcase, Camera, Plus, X } from "lucide-react";
+import { useAuthGuard } from "@/hooks/use-auth-guard";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 const propertyFormSchema = insertPropertySchema.extend({
   images: insertPropertySchema.shape.images.optional(),
   amenities: insertPropertySchema.shape.amenities.optional(),
+  title: z.string().min(1, "Property title is required"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
+  location: z.string().min(1, "Location is required"),
   monthlyPrice: z.string().min(1, "Monthly price is required").regex(/^\d+(\.\d{1,2})?$/, "Please enter a valid price"),
   depositAmount: z.string().min(1, "Deposit amount is required").regex(/^\d+(\.\d{1,2})?$/, "Please enter a valid deposit amount"),
 });
 
-type PropertyFormData = InsertProperty;
+type PropertyFormData = z.infer<typeof propertyFormSchema>;
 
 export default function AddProperty() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [newImageUrl, setNewImageUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customAmenities, setCustomAmenities] = useState<string[]>([]);
   const [newAmenity, setNewAmenity] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Check authentication and host status (require auth AND host privileges)
+  const { isChecking, user } = useAuthGuard(true, true);
+
+  // Handle file selection
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
+  // Upload image to server
+  const uploadImage = async () => {
+    if (!selectedFile) return;
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', selectedFile);
+
+      const response = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+      const imageUrl = data.url; // Assuming the server returns { url: "..." }
+      setImageUrls(prev => [...prev, imageUrl]);
+      setSelectedFile(null);
+      
+      // Clear the file input
+      const fileInput = document.getElementById('image-upload') as HTMLInputElement;
+      if (fileInput) {
+        fileInput.value = '';
+      }
+    } catch (error) {
+      toast({
+        title: "Upload Failed",
+        description: "Failed to upload image. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const form = useForm<PropertyFormData>({
     resolver: zodResolver(propertyFormSchema),
     defaultValues: {
-      hostId: "host1",
       title: "",
       description: "",
       location: "",
@@ -47,6 +103,7 @@ export default function AddProperty() {
       bathrooms: 1,
       images: [],
       amenities: [],
+      hostId: user?.id || 0,
       internetSpeed: null,
       hasStableElectricity: true,
       hasKitchen: true,
@@ -57,16 +114,44 @@ export default function AddProperty() {
     },
   });
 
+  // Update hostId when user data loads
+  useEffect(() => {
+    if (user?.id) {
+      form.setValue('hostId', user.id);
+    }
+  }, [user?.id, form]);
+
   const createPropertyMutation = useMutation({
-    mutationFn: (data: InsertProperty) => 
-      apiRequest('POST', '/api/properties', data),
+    mutationFn: async (data: Omit<PropertyFormData, 'hostId'> & { images: string[]; amenities: string[] }) => {
+      // Get fresh CSRF token
+      const csrfResponse = await fetch('/api/csrf-token', { credentials: 'include' });
+      const { csrfToken } = await csrfResponse.json();
+      
+      // Make the request with CSRF token
+      const res = await fetch('/api/properties', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify(data),
+        credentials: 'include',
+      });
+      
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      
+      return res;
+    },
     onSuccess: (newProperty) => {
       toast({
         title: "Success!",
         description: "Your property has been added successfully.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/properties', 'host1'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/properties/host'] });
       setLocation('/host-dashboard');
     },
     onError: (error) => {
@@ -79,7 +164,21 @@ export default function AddProperty() {
     },
   });
 
+  // Show loading state while checking auth - AFTER all hooks
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
   const onSubmit = (data: PropertyFormData) => {
+    console.log('Form submitted with data:', data);
+    console.log('Image URLs:', imageUrls);
+    console.log('Custom amenities:', customAmenities);
+    console.log('User ID:', user?.id);
+    
     // Ensure required fields are not empty
     if (!data.monthlyPrice || !data.depositAmount || !data.description || !data.location) {
       toast({
@@ -90,20 +189,48 @@ export default function AddProperty() {
       return;
     }
 
-    const propertyData: InsertProperty = {
-      ...data,
-      images: imageUrls.length > 0 ? imageUrls : [],
-      amenities: customAmenities.length > 0 ? customAmenities : [],
+    // Convert form data to property data with correct types and validation
+    if (imageUrls.length === 0) {
+      toast({
+        title: "Images Required",
+        description: "Please upload at least one image of your property.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert relative URLs to full URLs
+    const fullImageUrls = imageUrls.map(url => {
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return url;
+      }
+      // Convert relative URL to full URL using localhost (not 127.0.0.1)
+      return `http://localhost:3000${url}`;
+    });
+
+    const propertyData = {
+      hostId: user?.id || data.hostId, // Use user ID from auth
+      title: data.title.trim(),
+      description: data.description.trim(),
+      location: data.location.trim(),
+      monthlyPrice: data.monthlyPrice,  // Keep as string, server will parse
+      depositAmount: data.depositAmount, // Keep as string, server will parse
+      bedrooms: Number(data.bedrooms),
+      bathrooms: Number(data.bathrooms),
+      internetSpeed: data.internetSpeed ? Number(data.internetSpeed) : undefined,
+      hasStableElectricity: Boolean(data.hasStableElectricity),
+      hasKitchen: Boolean(data.hasKitchen),
+      hasWorkspace: Boolean(data.hasWorkspace),
+      hasAC: Boolean(data.hasAC),
+      hasCoffeeMachine: Boolean(data.hasCoffeeMachine),
+      images: fullImageUrls,
+      amenities: customAmenities.map(a => a.trim()).filter(Boolean)
     };
     
+    console.log('Property data to submit:', propertyData);
+    
+    // The server will handle hostId from the session
     createPropertyMutation.mutate(propertyData);
-  };
-
-  const addImageUrl = () => {
-    if (newImageUrl.trim() && !imageUrls.includes(newImageUrl.trim())) {
-      setImageUrls([...imageUrls, newImageUrl.trim()]);
-      setNewImageUrl("");
-    }
   };
 
   const removeImageUrl = (index: number) => {
@@ -117,8 +244,30 @@ export default function AddProperty() {
     }
   };
 
+  const handleUpload = () => {
+    if (imageUrls.length >= 10) {
+      toast({
+        title: "Maximum Images Reached",
+        description: "You can upload a maximum of 10 images per property.",
+        variant: "destructive",
+      });
+      return;
+    }
+    uploadImage();
+  };
+
   const removeCustomAmenity = (index: number) => {
     setCustomAmenities(customAmenities.filter((_, i) => i !== index));
+  };
+
+  // Add validation error handler
+  const onInvalid = (errors: any) => {
+    console.log('Form validation errors:', errors);
+    toast({
+      title: "Form Validation Failed",
+      description: "Please check all required fields and fix any errors.",
+      variant: "destructive",
+    });
   };
 
   return (
@@ -130,7 +279,7 @@ export default function AddProperty() {
         </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-8">
             {/* Basic Information */}
             <Card>
               <CardHeader>
@@ -501,47 +650,79 @@ export default function AddProperty() {
                   Property Images
                 </CardTitle>
                 <CardDescription>
-                  Add image URLs to showcase your property
+                  Upload images to showcase your property
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="https://example.com/image.jpg"
-                    value={newImageUrl}
-                    onChange={(e) => setNewImageUrl(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addImageUrl();
-                      }
-                    }}
-                  />
-                  <Button type="button" onClick={addImageUrl} size="sm">
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {imageUrls.map((url, index) => (
-                    <div key={index} className="relative group">
-                      <img
-                        src={url}
-                        alt={`Property image ${index + 1}`}
-                        className="w-full h-32 object-cover rounded-lg"
-                        onError={(e) => {
-                          e.currentTarget.src = "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?ixlib=rb-4.0.3";
-                        }}
+              <CardContent>
+                <div className="space-y-6">
+                  {/* Upload Section */}
+                  <div className="flex flex-col gap-4">
+                    <FormLabel>Property Images</FormLabel>
+                    <FormDescription>
+                      Upload high-quality images of your property (max 10 images, 5MB each). Include photos of:
+                      • Main living areas
+                      • Bedrooms
+                      • Kitchen
+                      • Bathrooms
+                      • Workspace/amenities
+                    </FormDescription>
+                    
+                    {/* Upload Controls */}
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        type="file"
+                        id="image-upload"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={handleFileSelect}
+                        className="flex-1"
                       />
-                      <button
+                      <Button 
                         type="button"
-                        onClick={() => removeImageUrl(index)}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={handleUpload}
+                        disabled={!selectedFile || isUploading}
+                        className="whitespace-nowrap"
                       >
-                        <X className="w-3 h-3" />
-                      </button>
+                        {isUploading ? (
+                          <>
+                            <span className="animate-spin mr-2">⌛</span>
+                            Uploading...
+                          </>
+                        ) : (
+                          'Upload Image'
+                        )}
+                      </Button>
                     </div>
-                  ))}
+
+                    {/* Upload Requirements */}
+                    <div className="text-sm text-gray-500 space-y-1">
+                      <p>• Maximum file size: 5MB</p>
+                      <p>• Supported formats: JPEG, PNG, WebP</p>
+                      <p>• Currently uploaded: {imageUrls.length}/10 images</p>
+                    </div>
+                  </div>
+
+                  {/* Image Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {imageUrls.map((url, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={url}
+                          alt={`Property image ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-lg"
+                          onError={(e) => {
+                            e.currentTarget.src = "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?ixlib=rb-4.0.3";
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImageUrl(index)}
+                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { type Property, type Review } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAuthGuard } from "@/hooks/use-auth-guard";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import AmenityBadge from "@/components/amenity-badge";
@@ -17,6 +18,9 @@ export default function PropertyDetail() {
   const queryClient = useQueryClient();
   const [checkInDate, setCheckInDate] = useState("");
   const [duration, setDuration] = useState("1");
+  
+  // Check authentication status (optional - for booking functionality)
+  const { isChecking, user } = useAuthGuard(false, false);
 
   const { data: property, isLoading } = useQuery<Property>({
     queryKey: ["/api/properties", id],
@@ -28,8 +32,26 @@ export default function PropertyDetail() {
     enabled: !!id,
   });
 
+  const validateBookingDates = (checkIn: string, duration: string) => {
+    const checkInDate = new Date(checkIn);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (checkInDate < today) {
+      throw new Error("Check-in date cannot be in the past");
+    }
+    
+    const durationNum = parseInt(duration);
+    if (durationNum < 1 || durationNum > 365) {
+      throw new Error("Duration must be between 1 and 365 days");
+    }
+    
+    return true;
+  };
+
   const bookingMutation = useMutation({
     mutationFn: async (bookingData: any) => {
+      validateBookingDates(bookingData.checkInDate, bookingData.duration);
       return apiRequest("POST", "/api/bookings", bookingData);
     },
     onSuccess: () => {
@@ -50,6 +72,18 @@ export default function PropertyDetail() {
   const handleBooking = () => {
     if (!property || !checkInDate) return;
 
+    // Check if user is authenticated
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to book a property.",
+        variant: "destructive",
+      });
+      // Redirect to auth page
+      window.location.href = '/auth?redirect=/property/' + property.id;
+      return;
+    }
+
     const checkIn = new Date(checkInDate);
     const checkOut = new Date(checkIn);
     checkOut.setMonth(checkOut.getMonth() + parseInt(duration));
@@ -58,7 +92,7 @@ export default function PropertyDetail() {
     const totalAmount = monthlyPrice * parseInt(duration);
 
     bookingMutation.mutate({
-      guestId: "guest1", // In a real app, this would come from auth
+      guestId: user.id, // Using authenticated user's ID
       propertyId: property.id,
       checkInDate: checkIn.toISOString(),
       checkOutDate: checkOut.toISOString(),

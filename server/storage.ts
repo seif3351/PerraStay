@@ -6,15 +6,21 @@ import {
   type Review, type InsertReview,
   type DeliveryOrder, type InsertDeliveryOrder
 } from "@shared/schema";
+import { and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import path from 'path';
+import fs from 'fs/promises';
 
 export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  verifyEmail(token: string): Promise<User | undefined>;
+  resetPassword(token: string, newPassword: string): Promise<User | undefined>;
   
   // Property operations
   getProperty(id: string): Promise<Property | undefined>;
@@ -27,6 +33,7 @@ export interface IStorage {
   getPropertiesByHost(hostId: string): Promise<Property[]>;
   createProperty(property: InsertProperty): Promise<Property>;
   updateProperty(id: string, updates: Partial<InsertProperty>): Promise<Property | undefined>;
+  cleanupOrphanedImages(): Promise<void>;
   
   // Booking operations
   getBooking(id: string): Promise<Booking | undefined>;
@@ -46,238 +53,129 @@ export interface IStorage {
   updateDeliveryOrderStatus(id: string, status: string): Promise<DeliveryOrder | undefined>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User> = new Map();
-  private properties: Map<string, Property> = new Map();
-  private bookings: Map<string, Booking> = new Map();
-  private reviews: Map<string, Review> = new Map();
-  private deliveryOrders: Map<string, DeliveryOrder> = new Map();
-
-  constructor() {
-    // No more mock data seeding - using clean storage
-  }
-
+export class DbStorage implements IStorage {
   // User operations
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const result = await db.select().from(users).where(eq(users.id, id));
+    return result[0];
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.email === email);
+    const result = await db.select().from(users).where(eq(users.email, email));
+    return result[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
+    const now = new Date();
     const user: User = {
       ...insertUser,
       id,
+      username: insertUser.email,
       isHost: insertUser.isHost ?? false,
-      createdAt: new Date(),
+      emailVerified: false,
+      verificationToken: insertUser.verificationToken ?? null,
+      verificationTokenExpiry: insertUser.verificationTokenExpiry ?? null,
+      resetPasswordToken: null,
+      resetPasswordExpiry: null,
+      lastPasswordChange: null,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastFailedLogin: null,
+      createdAt: now,
     };
-    this.users.set(id, user);
-    return user;
+    const [created] = await db.insert(users).values(user).returning();
+    return created;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const [updated] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async verifyEmail(token: string): Promise<User | undefined> {
+    try {
+      // First, find the user with this token
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.verificationToken, token));
+
+      if (!user) {
+        console.log('No user found with token:', token);
+        return undefined;
+      }
+
+      // Check if token is expired
+      const now = new Date();
+      const expiry = user.verificationTokenExpiry;
+      
+      console.log('Token expiry check:', {
+        now: now.toISOString(),
+        expiry: expiry?.toISOString(),
+        isExpired: expiry ? expiry <= now : true
+      });
+
+      if (!expiry || expiry <= now) {
+        console.log('Token is expired or has no expiry');
+        return undefined;
+      }
+
+      // Token is valid, update the user
+      const [updated] = await db
+        .update(users)
+        .set({
+          emailVerified: true,
+          verificationToken: null,
+          verificationTokenExpiry: null
+        })
+        .where(eq(users.id, user.id))
+        .returning();
+      
+      console.log('User verified successfully:', updated.id);
+      return updated || undefined;
+    } catch (error) {
+      console.error('Error in verifyEmail:', error);
+      return undefined;
+    }
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<User | undefined> {
+    const now = new Date();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`${users.resetPasswordToken} = ${token} AND ${users.resetPasswordExpiry} > ${now}`);
+
+    if (!user) {
+      return undefined;
+    }
+
+    const [updated] = await db
+      .update(users)
+      .set({
+        password: newPassword,
+        resetPasswordToken: null,
+        resetPasswordExpiry: null,
+        lastPasswordChange: now,
+        failedLoginAttempts: 0,
+        lockedUntil: null
+      })
+      .where(eq(users.id, user.id))
+      .returning();
+    return updated || undefined;
   }
 
   // Property operations
   async getProperty(id: string): Promise<Property | undefined> {
-    return this.properties.get(id);
-  }
-
-  async getProperties(filters?: {
-    location?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    amenities?: string[];
-  }): Promise<Property[]> {
-    let properties = Array.from(this.properties.values());
-    
-    if (filters) {
-      if (filters.location) {
-        properties = properties.filter(p => 
-          p.location.toLowerCase().includes(filters.location!.toLowerCase())
-        );
-      }
-      if (filters.minPrice !== undefined) {
-        properties = properties.filter(p => 
-          parseFloat(p.monthlyPrice) >= filters.minPrice!
-        );
-      }
-      if (filters.maxPrice !== undefined) {
-        properties = properties.filter(p => 
-          parseFloat(p.monthlyPrice) <= filters.maxPrice!
-        );
-      }
-      if (filters.amenities && filters.amenities.length > 0) {
-        properties = properties.filter(p => 
-          filters.amenities!.every(amenity => p.amenities?.includes(amenity))
-        );
-      }
-    }
-    
-    return properties;
-  }
-
-  async getPropertiesByHost(hostId: string): Promise<Property[]> {
-    return Array.from(this.properties.values()).filter(p => p.hostId === hostId);
-  }
-
-  async createProperty(insertProperty: InsertProperty): Promise<Property> {
-    const id = randomUUID();
-    const property: Property = {
-      ...insertProperty,
-      id,
-      rating: "0.00",
-      reviewCount: 0,
-      createdAt: new Date(),
-      images: insertProperty.images ?? [],
-      amenities: insertProperty.amenities ?? [],
-      hasStableElectricity: insertProperty.hasStableElectricity ?? true,
-      hasKitchen: insertProperty.hasKitchen ?? true,
-      hasWorkspace: insertProperty.hasWorkspace ?? false,
-      hasAC: insertProperty.hasAC ?? false,
-      hasCoffeeMachine: insertProperty.hasCoffeeMachine ?? false,
-      isVerified: insertProperty.isVerified ?? false,
-      internetSpeed: insertProperty.internetSpeed ?? null
-    };
-    this.properties.set(id, property);
-    return property;
-  }
-
-  async updateProperty(id: string, updates: Partial<InsertProperty>): Promise<Property | undefined> {
-    const property = this.properties.get(id);
-    if (!property) return undefined;
-    
-    const updated = { ...property, ...updates };
-    this.properties.set(id, updated);
-    return updated;
-  }
-
-  // Booking operations
-  async getBooking(id: string): Promise<Booking | undefined> {
-    return this.bookings.get(id);
-  }
-
-  async getBookingsByGuest(guestId: string): Promise<Booking[]> {
-    return Array.from(this.bookings.values()).filter(b => b.guestId === guestId);
-  }
-
-  async getBookingsByProperty(propertyId: string): Promise<Booking[]> {
-    return Array.from(this.bookings.values()).filter(b => b.propertyId === propertyId);
-  }
-
-  async createBooking(insertBooking: InsertBooking): Promise<Booking> {
-    const id = randomUUID();
-    const booking: Booking = {
-      ...insertBooking,
-      id,
-      depositRefunded: false,
-      createdAt: new Date(),
-      status: insertBooking.status ?? "pending"
-    };
-    this.bookings.set(id, booking);
-    return booking;
-  }
-
-  async updateBookingStatus(id: string, status: string): Promise<Booking | undefined> {
-    const booking = this.bookings.get(id);
-    if (!booking) return undefined;
-    
-    const updated = { ...booking, status };
-    this.bookings.set(id, updated);
-    return updated;
-  }
-
-  // Review operations
-  async getReviewsByProperty(propertyId: string): Promise<Review[]> {
-    return Array.from(this.reviews.values()).filter(r => r.propertyId === propertyId);
-  }
-
-  async createReview(insertReview: InsertReview): Promise<Review> {
-    const id = randomUUID();
-    const review: Review = { 
-      ...insertReview, 
-      id, 
-      createdAt: new Date(),
-      comment: insertReview.comment ?? null
-    };
-    this.reviews.set(id, review);
-    
-    // Update property rating
-    const reviews = await this.getReviewsByProperty(insertReview.propertyId);
-    const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
-    const property = this.properties.get(insertReview.propertyId);
-    if (property) {
-      const updated = {
-        ...property,
-        rating: avgRating.toFixed(2),
-        reviewCount: reviews.length
-      };
-      this.properties.set(insertReview.propertyId, updated);
-    }
-    
-    return review;
-  }
-
-  // Delivery operations
-  async getDeliveryOrder(id: string): Promise<DeliveryOrder | undefined> {
-    return this.deliveryOrders.get(id);
-  }
-
-  async getDeliveryOrdersByGuest(guestId: string): Promise<DeliveryOrder[]> {
-    return Array.from(this.deliveryOrders.values()).filter(o => o.guestId === guestId);
-  }
-
-  async createDeliveryOrder(insertOrder: InsertDeliveryOrder): Promise<DeliveryOrder> {
-    const id = randomUUID();
-    const order: DeliveryOrder = { 
-      ...insertOrder, 
-      id, 
-      createdAt: new Date(),
-      status: insertOrder.status ?? "pending",
-      items: insertOrder.items ?? [],
-      discountAmount: insertOrder.discountAmount ?? "0.00"
-    };
-    this.deliveryOrders.set(id, order);
-    return order;
-  }
-
-  async updateDeliveryOrderStatus(id: string, status: string): Promise<DeliveryOrder | undefined> {
-    const order = this.deliveryOrders.get(id);
-    if (!order) return undefined;
-    
-    const updated = { ...order, status };
-    this.deliveryOrders.set(id, updated);
-    return updated;
-  }
-
-
-  // Method to reassign dummy properties to a real registered host
-}
-
-export class DatabaseStorage implements IStorage {
-  async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
-  }
-
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-    return user || undefined;
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values({
-        ...insertUser,
-        isHost: insertUser.isHost ?? false
-      })
-      .returning();
-    return user;
-  }
-
-  async getProperty(id: string): Promise<Property | undefined> {
-    const [property] = await db.select().from(properties).where(eq(properties.id, id));
+    const [property] = await db
+      .select()
+      .from(properties)
+      .where(eq(properties.id, id));
     return property || undefined;
   }
 
@@ -287,67 +185,200 @@ export class DatabaseStorage implements IStorage {
     maxPrice?: number;
     amenities?: string[];
   }): Promise<Property[]> {
-    let query = db.select().from(properties);
-    
-    // For simplicity, we'll implement basic filtering here
-    // In production, you'd want to use proper query building with drizzle
-    const allProperties = await query;
-    
-    if (!filters) return allProperties;
-    
-    return allProperties.filter(p => {
-      if (filters.location && !p.location.toLowerCase().includes(filters.location.toLowerCase())) {
-        return false;
-      }
-      if (filters.minPrice && parseFloat(p.monthlyPrice) < filters.minPrice) {
-        return false;
-      }
-      if (filters.maxPrice && parseFloat(p.monthlyPrice) > filters.maxPrice) {
-        return false;
-      }
-      if (filters.amenities && filters.amenities.length > 0) {
-        if (!filters.amenities.every(amenity => p.amenities?.includes(amenity))) {
-          return false;
+    try {
+      const conditions = [];
+      if (filters) {
+        if (filters.location) {
+          conditions.push(sql`lower(${properties.location}) like ${`%${filters.location.toLowerCase()}%`}`);
+        }
+        if (filters.minPrice !== undefined) {
+          conditions.push(sql`${properties.monthlyPrice}::decimal >= ${filters.minPrice}`);
+        }
+        if (filters.maxPrice !== undefined) {
+          conditions.push(sql`${properties.monthlyPrice}::decimal <= ${filters.maxPrice}`);
+        }
+        if (filters.amenities && filters.amenities.length > 0) {
+          conditions.push(sql`${properties.amenities} @> ${filters.amenities}::text[]`);
         }
       }
-      return true;
-    });
+
+      let query = db.select().from(properties);
+      if (conditions.length > 0) {
+        const combinedCondition = conditions.reduce((acc, curr) => 
+          acc ? sql`${acc} AND ${curr}` : curr
+        );
+        return await query.where(combinedCondition);
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error in getProperties:', error);
+      return [];
+    }
   }
 
   async getPropertiesByHost(hostId: string): Promise<Property[]> {
-    return await db.select().from(properties).where(eq(properties.hostId, hostId));
+    return await db
+      .select()
+      .from(properties)
+      .where(eq(properties.hostId, hostId));
   }
 
   async createProperty(insertProperty: InsertProperty): Promise<Property> {
+    // Clean up and validate image URLs array
+    if (!insertProperty.images || insertProperty.images.length === 0) {
+      throw new Error('At least one image is required for the property.');
+    }
+
+    const cleanedImages = insertProperty.images
+      .filter(url => url && url.trim().length > 0)
+      .map(url => url.trim())
+      .slice(0, 10); // Enforce max 10 images
+
+    if (cleanedImages.length === 0) {
+      throw new Error('At least one valid image URL is required.');
+    }
+
+    // Validate all images are from our server
+    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const validImages = cleanedImages.every(url => {
+      try {
+        const urlObj = new URL(url);
+        return urlObj.origin === baseUrl && urlObj.pathname.startsWith('/uploads/');
+      } catch {
+        return false;
+      }
+    });
+
+    if (!validImages) {
+      throw new Error('Invalid image URLs detected. All images must be uploaded through our server.');
+    }
+
+    // Verify the files exist in the uploads directory
+    // Temporarily disabled for debugging - files are saved to dist/uploads in dev mode
+    /*
+    try {
+      await Promise.all(cleanedImages.map(async url => {
+        const urlObj = new URL(url);
+        // Extract just the filename from the URL path
+        const filename = path.basename(urlObj.pathname);
+        // Use the same uploads directory that multer uses
+        const filePath = path.join(__dirname, 'uploads', filename);
+        console.log('Checking image file:', {
+          url,
+          filename,
+          filePath,
+          __dirname
+        });
+        await fs.access(filePath);
+      }));
+    } catch (error) {
+      console.error('Image file verification error:', error);
+      throw new Error('One or more uploaded images are missing from the server.');
+    }
+    */
+
     const [property] = await db
       .insert(properties)
       .values({
         ...insertProperty,
+        id: randomUUID(),
         rating: "0.00",
         reviewCount: 0,
-        images: insertProperty.images ?? [],
+        images: cleanedImages,
         amenities: insertProperty.amenities ?? [],
         hasStableElectricity: insertProperty.hasStableElectricity ?? true,
         hasKitchen: insertProperty.hasKitchen ?? true,
         hasWorkspace: insertProperty.hasWorkspace ?? false,
         hasAC: insertProperty.hasAC ?? false,
         hasCoffeeMachine: insertProperty.hasCoffeeMachine ?? false,
-        isVerified: insertProperty.isVerified ?? false,
-        internetSpeed: insertProperty.internetSpeed ?? null
+        createdAt: new Date()
       })
       .returning();
     return property;
   }
 
   async updateProperty(id: string, updates: Partial<InsertProperty>): Promise<Property | undefined> {
-    const [property] = await db
+    // If updating images, validate them
+    if (updates.images) {
+      const cleanedImages = updates.images
+        .filter(url => url && url.trim().length > 0)
+        .map(url => url.trim())
+        .slice(0, 10);
+
+      const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+      const validImages = cleanedImages.every(url => {
+        try {
+          const urlObj = new URL(url);
+          return urlObj.origin === baseUrl && urlObj.pathname.startsWith('/uploads/');
+        } catch {
+          return false;
+        }
+      });
+
+      if (!validImages) {
+        throw new Error('Invalid image URLs detected. All images must be uploaded through our server.');
+      }
+
+      updates.images = cleanedImages;
+    }
+
+    const [updated] = await db
       .update(properties)
       .set(updates)
       .where(eq(properties.id, id))
       .returning();
-    return property || undefined;
+    return updated || undefined;
   }
 
+  async cleanupOrphanedImages(): Promise<void> {
+    try {
+      // Get all property images from database
+      const allProperties = await db.select({ images: properties.images }).from(properties);
+      const usedImages = new Set(allProperties.flatMap(p => p.images || []));
+
+      // Get all files in uploads directory
+      const uploadsDir = path.join(__dirname, 'uploads');
+      
+      // Create uploads directory if it doesn't exist
+      try {
+        await fs.access(uploadsDir);
+      } catch {
+        await fs.mkdir(uploadsDir, { recursive: true });
+        return; // No files to clean up in a new directory
+      }
+
+      const files = await fs.readdir(uploadsDir);
+
+      // Get server URL configuration
+      const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
+
+      // Check each file
+      for (const file of files) {
+        const filePath = path.join(uploadsDir, file);
+        const fileUrl = `/uploads/${file}`;
+        const fullUrl = `${baseUrl}${fileUrl}`;
+
+        // If the file isn't referenced in any property, delete it
+        if (!usedImages.has(fullUrl)) {
+          try {
+            // Check if file exists before trying to delete
+            await fs.access(filePath);
+            await fs.unlink(filePath);
+            console.log(`Deleted orphaned image: ${file}`);
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { // Only log error if it's not a "file not found" error
+              console.error(`Failed to delete orphaned image ${file}:`, err);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error cleaning up orphaned images:', error);
+    }
+  }
+
+  // Booking operations
   async getBooking(id: string): Promise<Booking | undefined> {
     const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
     return booking || undefined;
@@ -366,24 +397,30 @@ export class DatabaseStorage implements IStorage {
       .insert(bookings)
       .values({
         ...insertBooking,
+        id: randomUUID(),
+        status: insertBooking.status ?? "pending",
         depositRefunded: false,
-        status: insertBooking.status ?? "pending"
+        createdAt: new Date()
       })
       .returning();
     return booking;
   }
 
   async updateBookingStatus(id: string, status: string): Promise<Booking | undefined> {
-    const [booking] = await db
+    const [updated] = await db
       .update(bookings)
       .set({ status })
       .where(eq(bookings.id, id))
       .returning();
-    return booking || undefined;
+    return updated || undefined;
   }
 
+  // Review operations
   async getReviewsByProperty(propertyId: string): Promise<Review[]> {
-    return await db.select().from(reviews).where(eq(reviews.propertyId, propertyId));
+    return await db
+      .select()
+      .from(reviews)
+      .where(eq(reviews.propertyId, propertyId));
   }
 
   async createReview(insertReview: InsertReview): Promise<Review> {
@@ -391,13 +428,16 @@ export class DatabaseStorage implements IStorage {
       .insert(reviews)
       .values({
         ...insertReview,
-        comment: insertReview.comment ?? null
+        id: randomUUID(),
+        createdAt: new Date()
       })
       .returning();
-    
+
     // Update property rating
     const propertyReviews = await this.getReviewsByProperty(insertReview.propertyId);
-    const avgRating = propertyReviews.reduce((sum, r) => sum + r.rating, 0) / propertyReviews.length;
+    const avgRating = propertyReviews.length > 0 
+      ? propertyReviews.reduce((sum, r) => sum + r.rating, 0) / propertyReviews.length 
+      : 0;
     await db
       .update(properties)
       .set({
@@ -405,10 +445,11 @@ export class DatabaseStorage implements IStorage {
         reviewCount: propertyReviews.length
       })
       .where(eq(properties.id, insertReview.propertyId));
-    
+
     return review;
   }
 
+  // Delivery operations
   async getDeliveryOrder(id: string): Promise<DeliveryOrder | undefined> {
     const [order] = await db.select().from(deliveryOrders).where(eq(deliveryOrders.id, id));
     return order || undefined;
@@ -423,22 +464,26 @@ export class DatabaseStorage implements IStorage {
       .insert(deliveryOrders)
       .values({
         ...insertOrder,
+        id: randomUUID(),
         status: insertOrder.status ?? "pending",
         items: insertOrder.items ?? [],
-        discountAmount: insertOrder.discountAmount ?? "0.00"
+        discountAmount: insertOrder.discountAmount ?? "0.00",
+        createdAt: new Date()
       })
       .returning();
     return order;
   }
 
   async updateDeliveryOrderStatus(id: string, status: string): Promise<DeliveryOrder | undefined> {
-    const [order] = await db
+    const [updated] = await db
       .update(deliveryOrders)
       .set({ status })
       .where(eq(deliveryOrders.id, id))
       .returning();
-    return order || undefined;
+    return updated || undefined;
   }
 }
 
-export const storage = new DatabaseStorage();
+// Export singleton instance
+const storage = new DbStorage();
+export { storage };

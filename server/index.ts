@@ -1,12 +1,92 @@
+import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import helmet from "helmet";
+import session from "express-session";
+import csurf from "csurf";
+import { randomBytes } from "crypto";
+import { initDb } from "./db";
+import path from "path";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+
+// Security middlewares
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:", "http:"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", "https:", "http:"]
+    },
+  },
+}));
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 app.use(cookieParser());
+
+// Validate session secret is set
+if (!process.env.SESSION_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET environment variable must be set in production');
+  }
+  console.warn('Warning: SESSION_SECRET not set. Using a random secret for development');
+}
+
+const SESSION_SECRET = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
+
+// Session management
+app.use(session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  name: 'session', // Don't use default 'connect.sid'
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Requires HTTPS in production
+    httpOnly: true, // Prevents client-side access to the cookie
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'strict' // CSRF protection
+  }
+}));
+
+// CSRF protection - apply after session middleware
+const csrfProtection = csurf({
+  cookie: {
+    key: '_csrf',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    httpOnly: true
+  }
+});
+
+// Add CSRF protection to all routes except GET requests and public endpoints
+app.use((req, res, next) => {
+  // Skip CSRF for GET requests as they should be idempotent
+  if (req.method === 'GET') {
+    return next();
+  }
+
+  // Skip CSRF for public endpoints and multipart form data uploads
+  const publicPaths = ['/api/signin', '/api/users', '/api/resend-verification', '/api/upload-image'];
+  if (publicPaths.includes(req.path) || req.headers['content-type']?.includes('multipart/form-data')) {
+    return next();
+  }
+
+  // Apply CSRF protection to all other routes
+  csrfProtection(req, res, next);
+});
+
+// Expose CSRF token to the frontend
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -41,34 +121,42 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  try {
+    // Initialize database connection first
+    await initDb();
+    log('Database initialized successfully');
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    // Setup routes after database is ready
+    const server = await registerRoutes(app);
 
-    res.status(status).json({ message });
-    throw err;
-  });
+    // Global error handler
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      log(`Error: ${status} - ${message}`);
+      res.status(status).json({ error: message });
+    });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+    // Setup Vite or static serving
+    if (app.get("env") === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
+
+    // Start server
+    const port = parseInt(process.env.PORT || '5000', 10);
+    server.listen({
+      port,
+      host: "127.0.0.1"
+    }, () => {
+      log(`Server started successfully on port ${port}`);
+    });
+  } catch (error) {
+    log(`Failed to start server: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    process.exit(1);
   }
-
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "127.0.0.1"
-  }, () => {
-    log(`serving on port ${port}`);
-  });
-})();
+})().catch(error => {
+  log(`Unhandled error during server startup: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  process.exit(1);
+});

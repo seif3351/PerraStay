@@ -1,5 +1,11 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Function to get CSRF token from the cookie
+function getCsrfToken() {
+  const tokenMatch = document.cookie.match('(^|;)\\s*_csrf\\s*=\\s*([^;]+)');
+  return tokenMatch ? tokenMatch.pop() : '';
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -12,9 +18,16 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  // Get CSRF token from cookie
+  const csrfToken = getCsrfToken();
+  
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      // Include CSRF token in header
+      "X-CSRF-Token": csrfToken || "",
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -29,7 +42,13 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    // Get CSRF token from cookie
+    const csrfToken = getCsrfToken();
+
     const res = await fetch(queryKey.join("/") as string, {
+      headers: {
+        "X-CSRF-Token": csrfToken || "",
+      },
       credentials: "include",
     });
 
