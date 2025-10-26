@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, decimal, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -21,7 +21,11 @@ export const users = pgTable("users", {
   lastFailedLogin: timestamp("last_failed_login"),
   lockedUntil: timestamp("locked_until"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  emailIdx: index("users_email_idx").on(table.email),
+  verificationTokenIdx: index("users_verification_token_idx").on(table.verificationToken),
+  resetPasswordTokenIdx: index("users_reset_password_token_idx").on(table.resetPasswordToken),
+}));
 
 export const properties = pgTable("properties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -45,7 +49,12 @@ export const properties = pgTable("properties", {
   reviewCount: integer("review_count").default(0),
   isVerified: boolean("is_verified").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  hostIdIdx: index("properties_host_id_idx").on(table.hostId),
+  locationIdx: index("properties_location_idx").on(table.location),
+  priceIdx: index("properties_monthly_price_idx").on(table.monthlyPrice),
+  createdAtIdx: index("properties_created_at_idx").on(table.createdAt),
+}));
 
 export const bookings = pgTable("bookings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -76,7 +85,14 @@ export const bookings = pgTable("bookings", {
   damageDescription: text("damage_description"),
   
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  guestIdIdx: index("bookings_guest_id_idx").on(table.guestId),
+  propertyIdIdx: index("bookings_property_id_idx").on(table.propertyId),
+  statusIdx: index("bookings_status_idx").on(table.status),
+  checkInDateIdx: index("bookings_check_in_date_idx").on(table.checkInDate),
+  checkOutDateIdx: index("bookings_check_out_date_idx").on(table.checkOutDate),
+  createdAtIdx: index("bookings_created_at_idx").on(table.createdAt),
+}));
 
 export const reviews = pgTable("reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -86,7 +102,12 @@ export const reviews = pgTable("reviews", {
   rating: integer("rating").notNull(), // 1-5
   comment: text("comment"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  bookingIdIdx: index("reviews_booking_id_idx").on(table.bookingId),
+  propertyIdIdx: index("reviews_property_id_idx").on(table.propertyId),
+  guestIdIdx: index("reviews_guest_id_idx").on(table.guestId),
+  createdAtIdx: index("reviews_created_at_idx").on(table.createdAt),
+}));
 
 export const deliveryOrders = pgTable("delivery_orders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -99,7 +120,12 @@ export const deliveryOrders = pgTable("delivery_orders", {
   status: text("status").default("pending"), // pending, confirmed, preparing, delivered
   deliveryAddress: text("delivery_address").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  guestIdIdx: index("delivery_orders_guest_id_idx").on(table.guestId),
+  propertyIdIdx: index("delivery_orders_property_id_idx").on(table.propertyId),
+  statusIdx: index("delivery_orders_status_idx").on(table.status),
+  createdAtIdx: index("delivery_orders_created_at_idx").on(table.createdAt),
+}));
 
 // Property access information (WiFi, codes, emergency contacts, etc.)
 export const propertyAccessInfo = pgTable("property_access_info", {
@@ -119,7 +145,9 @@ export const propertyAccessInfo = pgTable("property_access_info", {
   welcomeBoxDescription: text("welcome_box_description"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  propertyIdIdx: index("property_access_info_property_id_idx").on(table.propertyId),
+}));
 
 // Booking-specific messages between guest and host
 export const bookingMessages = pgTable("booking_messages", {
@@ -129,7 +157,12 @@ export const bookingMessages = pgTable("booking_messages", {
   message: text("message").notNull(),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  bookingIdIdx: index("booking_messages_booking_id_idx").on(table.bookingId),
+  senderIdIdx: index("booking_messages_sender_id_idx").on(table.senderId),
+  isReadIdx: index("booking_messages_is_read_idx").on(table.isRead),
+  createdAtIdx: index("booking_messages_created_at_idx").on(table.createdAt),
+}));
 
 // Photos uploaded by guests at check-in and check-out
 export const bookingPhotos = pgTable("booking_photos", {
@@ -139,7 +172,11 @@ export const bookingPhotos = pgTable("booking_photos", {
   photoType: text("photo_type").notNull(), // 'check_in' or 'check_out'
   description: text("description"),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
-});
+}, (table) => ({
+  bookingIdIdx: index("booking_photos_booking_id_idx").on(table.bookingId),
+  photoTypeIdx: index("booking_photos_photo_type_idx").on(table.photoType),
+  uploadedAtIdx: index("booking_photos_uploaded_at_idx").on(table.uploadedAt),
+}));
 
 // Messages between guest and host for a booking
 export const messages = pgTable("messages", {
@@ -149,7 +186,12 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  bookingIdIdx: index("messages_booking_id_idx").on(table.bookingId),
+  senderIdIdx: index("messages_sender_id_idx").on(table.senderId),
+  isReadIdx: index("messages_is_read_idx").on(table.isRead),
+  createdAtIdx: index("messages_created_at_idx").on(table.createdAt),
+}));
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
