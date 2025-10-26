@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { type Booking, type Property, type DeliveryOrder } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { Calendar, Package, MapPin, Clock, Star, ShoppingCart } from "lucide-rea
 
 export default function GuestDashboard() {
   const [activeTab, setActiveTab] = useState("bookings");
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
@@ -104,9 +106,12 @@ export default function GuestDashboard() {
     return (
       <Card 
         key={booking.id} 
-        className={status === 'active' ? 'border-l-4 border-l-green-500' : 
-                  status === 'upcoming' ? 'border-l-4 border-l-blue-500' : 
-                  undefined}
+        className={`cursor-pointer hover:shadow-lg transition-shadow ${
+          status === 'active' ? 'border-l-4 border-l-green-500' : 
+          status === 'upcoming' ? 'border-l-4 border-l-blue-500' : 
+          ''
+        }`}
+        onClick={() => setLocation(`/booking/${booking.id}`)}
       >
         <CardContent className="p-6">
           <div className="flex justify-between items-start">

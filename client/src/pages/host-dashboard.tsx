@@ -8,17 +8,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PropertyCard from "@/components/property-card";
 import { useAuthGuard } from "@/hooks/use-auth-guard";
 import { LoadingSpinner } from "@/components/ui/loading";
-import { Plus, Home, Calendar, DollarSign, Users, TrendingUp, Sparkles, CheckCircle } from "lucide-react";
+import { Plus, Home, Calendar, DollarSign, Users, TrendingUp, Sparkles, CheckCircle, Key } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { PropertyAccessInfoDialog } from "@/components/property-access-info-dialog";
 
 export default function HostDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [selectedPropertyForAccessInfo, setSelectedPropertyForAccessInfo] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -314,7 +316,16 @@ export default function HostDashboard() {
                 {allBookings.map((booking) => {
                   const property = properties.find(p => p.id === booking.propertyId);
                   return (
-                    <Card key={booking.id}>
+                    <Card 
+                      key={booking.id}
+                      className="cursor-pointer hover:shadow-lg transition-shadow"
+                      onClick={(e) => {
+                        // Only navigate if not clicking on action buttons
+                        if (!(e.target as HTMLElement).closest('button')) {
+                          setLocation(`/booking/${booking.id}`);
+                        }
+                      }}
+                    >
                       <CardContent className="p-6">
                         <div className="flex justify-between items-start">
                           <div>
@@ -361,6 +372,17 @@ export default function HostDashboard() {
                                   {updateBookingStatusMutation.isPending ? 'Declining...' : 'Decline'}
                                 </Button>
                               </div>
+                            )}
+                            {(booking.status === "confirmed" || booking.status === "active") && property && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full mt-2"
+                                onClick={() => setSelectedPropertyForAccessInfo(property.id)}
+                              >
+                                <Key className="h-4 w-4 mr-2" />
+                                Access Info
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -538,6 +560,15 @@ export default function HostDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Property Access Info Dialog */}
+      {selectedPropertyForAccessInfo && (
+        <PropertyAccessInfoDialog
+          propertyId={selectedPropertyForAccessInfo}
+          open={!!selectedPropertyForAccessInfo}
+          onOpenChange={(open) => !open && setSelectedPropertyForAccessInfo(null)}
+        />
+      )}
     </div>
   );
 }

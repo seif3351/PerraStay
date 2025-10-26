@@ -1,10 +1,11 @@
 import { 
-  users, properties, bookings, reviews, deliveryOrders,
+  users, properties, bookings, reviews, deliveryOrders, propertyAccessInfo,
   type User, type InsertUser,
   type Property, type InsertProperty,
   type Booking, type InsertBooking,
   type Review, type InsertReview,
-  type DeliveryOrder, type InsertDeliveryOrder
+  type DeliveryOrder, type InsertDeliveryOrder,
+  type PropertyAccessInfo, type InsertPropertyAccessInfo
 } from "@shared/schema";
 import { and } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -51,6 +52,11 @@ export interface IStorage {
   getDeliveryOrdersByGuest(guestId: string): Promise<DeliveryOrder[]>;
   createDeliveryOrder(order: InsertDeliveryOrder): Promise<DeliveryOrder>;
   updateDeliveryOrderStatus(id: string, status: string): Promise<DeliveryOrder | undefined>;
+  
+  // Property Access Info operations
+  getPropertyAccessInfo(propertyId: string): Promise<PropertyAccessInfo | undefined>;
+  createPropertyAccessInfo(accessInfo: InsertPropertyAccessInfo): Promise<PropertyAccessInfo>;
+  updatePropertyAccessInfo(propertyId: string, updates: Partial<InsertPropertyAccessInfo>): Promise<PropertyAccessInfo | undefined>;
 }
 
 export class DbStorage implements IStorage {
@@ -470,6 +476,40 @@ export class DbStorage implements IStorage {
       .update(deliveryOrders)
       .set({ status })
       .where(eq(deliveryOrders.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // Property Access Info operations
+  async getPropertyAccessInfo(propertyId: string): Promise<PropertyAccessInfo | undefined> {
+    const [accessInfo] = await db
+      .select()
+      .from(propertyAccessInfo)
+      .where(eq(propertyAccessInfo.propertyId, propertyId));
+    return accessInfo || undefined;
+  }
+
+  async createPropertyAccessInfo(insertAccessInfo: InsertPropertyAccessInfo): Promise<PropertyAccessInfo> {
+    const [accessInfo] = await db
+      .insert(propertyAccessInfo)
+      .values({
+        ...insertAccessInfo,
+        id: randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+    return accessInfo;
+  }
+
+  async updatePropertyAccessInfo(propertyId: string, updates: Partial<InsertPropertyAccessInfo>): Promise<PropertyAccessInfo | undefined> {
+    const [updated] = await db
+      .update(propertyAccessInfo)
+      .set({
+        ...updates,
+        updatedAt: new Date()
+      })
+      .where(eq(propertyAccessInfo.propertyId, propertyId))
       .returning();
     return updated || undefined;
   }

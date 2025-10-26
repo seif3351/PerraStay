@@ -14,6 +14,7 @@ import {
   insertReviewSchema, 
   insertDeliveryOrderSchema, 
   insertUserSchema,
+  insertPropertyAccessInfoSchema,
   users,
   type User,
   type Booking
@@ -935,6 +936,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get booking details with property and user information
+  app.get("/api/bookings/:id", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Check authorization - only guest who made booking or host who owns property can view
+      const property = await storage.getProperty(booking.propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const isGuest = booking.guestId === req.user!.userId;
+      const isHost = property.hostId === req.user!.userId;
+
+      if (!isGuest && !isHost) {
+        return res.status(403).json({ 
+          code: "FORBIDDEN",
+          message: "You can only view your own bookings" 
+        });
+      }
+
+      // Get guest information
+      const guest = await storage.getUser(booking.guestId);
+      if (!guest) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
+
+      // Get host information
+      const host = await storage.getUser(property.hostId);
+      if (!host) {
+        return res.status(404).json({ message: "Host not found" });
+      }
+
+      // Remove sensitive information
+      const { password: _, ...guestWithoutPassword } = guest;
+      const { password: __, ...hostWithoutPassword } = host;
+
+      // Get property access info if booking is confirmed and user is guest
+      let accessInfo = null;
+      if (isGuest && (booking.status === "confirmed" || booking.status === "active" || booking.status === "completed")) {
+        accessInfo = await storage.getPropertyAccessInfo(booking.propertyId);
+      }
+
+      // Return booking with all related information
+      res.json({
+        ...booking,
+        property,
+        guest: guestWithoutPassword,
+        host: hostWithoutPassword,
+        accessInfo: accessInfo || undefined,
+      });
+    } catch (error) {
+      console.error("Failed to fetch booking details:", error);
+      res.status(500).json({ message: "Failed to fetch booking details" });
+    }
+  });
+
   app.patch("/api/bookings/:id/status", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const { status } = req.body;
@@ -976,6 +1037,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedBooking);
     } catch (error) {
       res.status(500).json({ message: "Failed to update booking" });
+    }
+  });
+
+  // Property Access Info routes
+  app.get("/api/properties/:id/access-info", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      // Get the property to check authorization
+      const property = await storage.getProperty(req.params.id);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Only the host can view access info
+      if (property.hostId !== req.user!.userId) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "Only the host can view access information" });
+      }
+
+      const accessInfo = await storage.getPropertyAccessInfo(req.params.id);
+      res.json(accessInfo || null);
+    } catch (error) {
+      console.error("Failed to fetch property access info:", error);
+      res.status(500).json({ message: "Failed to fetch property access info" });
+    }
+  });
+
+  app.post("/api/properties/:id/access-info", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    console.log('=== POST ACCESS INFO ROUTE HIT ===');
+    console.log('Property ID:', req.params.id);
+    console.log('User ID:', req.user?.userId);
+    
+    try {
+      console.log('POST /api/properties/:id/access-info - Request body:', JSON.stringify(req.body, null, 2));
+      
+      // Get the property to check authorization
+      const property = await storage.getProperty(req.params.id);
+      if (!property) {
+        console.log('Property not found');
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      console.log('Property found, host ID:', property.hostId);
+
+      // Only the host can create access info
+      if (property.hostId !== req.user!.userId) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "Only the host can add access information" });
+      }
+
+      // Check if access info already exists
+      const existingInfo = await storage.getPropertyAccessInfo(req.params.id);
+      if (existingInfo) {
+        console.log('Access info already exists, returning 409');
+        return res.status(409).json({ message: "Access info already exists. Use PUT to update." });
+      }
+
+      console.log('Validating data with schema...');
+      const validatedData = insertPropertyAccessInfoSchema.parse({
+        ...req.body,
+        propertyId: req.params.id
+      });
+      
+      console.log('Creating access info with validated data:', validatedData);
+      const accessInfo = await storage.createPropertyAccessInfo(validatedData);
+      console.log('Access info created successfully');
+      res.status(201).json(accessInfo);
+    } catch (error) {
+      console.error("Failed to create property access info:", error);
+      if (error instanceof z.ZodError) {
+        console.error('Zod validation errors:', error.errors);
+        return res.status(400).json({ message: "Invalid access info data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create property access info" });
+    }
+  });
+
+  app.put("/api/properties/:id/access-info", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      console.log('PUT /api/properties/:id/access-info - Request body:', JSON.stringify(req.body, null, 2));
+      
+      // Get the property to check authorization
+      const property = await storage.getProperty(req.params.id);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Only the host can update access info
+      if (property.hostId !== req.user!.userId) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "Only the host can update access information" });
+      }
+
+      // Check if access info exists
+      const existingInfo = await storage.getPropertyAccessInfo(req.params.id);
+      if (!existingInfo) {
+        console.log('No existing access info, creating new one');
+        // Create new if doesn't exist
+        const validatedData = insertPropertyAccessInfoSchema.parse({
+          ...req.body,
+          propertyId: req.params.id
+        });
+        const accessInfo = await storage.createPropertyAccessInfo(validatedData);
+        return res.status(201).json(accessInfo);
+      }
+
+      console.log('Updating existing access info');
+      const validatedData = insertPropertyAccessInfoSchema.parse(req.body);
+      const accessInfo = await storage.updatePropertyAccessInfo(req.params.id, validatedData);
+      console.log('Access info updated successfully');
+      res.json(accessInfo);
+    } catch (error) {
+      console.error("Failed to update property access info:", error);
+      if (error instanceof z.ZodError) {
+        console.error('Zod validation errors:', error.errors);
+        return res.status(400).json({ message: "Invalid access info data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update property access info" });
     }
   });
 
