@@ -10,6 +10,7 @@ import { ArrowLeft, Calendar, DollarSign, Home, UserCircle, MapPin, Wifi, Key, P
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { BookingPhotoUpload } from "@/components/booking-photo-upload";
 import { BookingPhotoGallery } from "@/components/booking-photo-gallery";
+import { BookingChat } from "@/components/booking-chat";
 import type { Booking, Property, User, PropertyAccessInfo } from "@shared/schema";
 
 interface BookingWithDetails extends Booking {
@@ -554,6 +555,16 @@ export default function BookingDetail() {
                   </CardContent>
                 </Card>
               </>
+            )}
+
+            {/* Messaging - For confirmed/active bookings */}
+            {(booking.status === 'confirmed' || booking.status === 'active') && (
+              <BookingChat
+                bookingId={booking.id}
+                currentUserId={user!.id}
+                guestName={`${booking.guest.firstName} ${booking.guest.lastName}`}
+                hostName={`${booking.host.firstName} ${booking.host.lastName}`}
+              />
             )}
           </div>
 

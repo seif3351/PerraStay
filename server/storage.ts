@@ -1,12 +1,13 @@
 import { 
-  users, properties, bookings, reviews, deliveryOrders, propertyAccessInfo, bookingPhotos,
+  users, properties, bookings, reviews, deliveryOrders, propertyAccessInfo, bookingPhotos, messages,
   type User, type InsertUser,
   type Property, type InsertProperty,
   type Booking, type InsertBooking,
   type Review, type InsertReview,
   type DeliveryOrder, type InsertDeliveryOrder,
   type PropertyAccessInfo, type InsertPropertyAccessInfo,
-  type BookingPhoto, type InsertBookingPhoto
+  type BookingPhoto, type InsertBookingPhoto,
+  type Message, type InsertMessage
 } from "@shared/schema";
 import { and } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -64,6 +65,12 @@ export interface IStorage {
   getBookingPhotosByType(bookingId: string, photoType: string): Promise<BookingPhoto[]>;
   createBookingPhoto(photo: InsertBookingPhoto): Promise<BookingPhoto>;
   deleteBookingPhoto(id: string): Promise<void>;
+  
+  // Message operations
+  getMessages(bookingId: string): Promise<Message[]>;
+  createMessage(message: InsertMessage): Promise<Message>;
+  markMessagesAsRead(bookingId: string, userId: string): Promise<void>;
+  getUnreadMessageCount(bookingId: string, userId: string): Promise<number>;
 }
 
 export class DbStorage implements IStorage {
@@ -553,6 +560,56 @@ export class DbStorage implements IStorage {
 
   async deleteBookingPhoto(id: string): Promise<void> {
     await db.delete(bookingPhotos).where(eq(bookingPhotos.id, id));
+  }
+
+  // Message operations
+  async getMessages(bookingId: string): Promise<Message[]> {
+    return await db
+      .select()
+      .from(messages)
+      .where(eq(messages.bookingId, bookingId))
+      .orderBy(messages.createdAt);
+  }
+
+  async createMessage(insertMessage: InsertMessage): Promise<Message> {
+    const [message] = await db
+      .insert(messages)
+      .values({
+        ...insertMessage,
+        id: randomUUID(),
+        isRead: false,
+        createdAt: new Date()
+      })
+      .returning();
+    return message;
+  }
+
+  async markMessagesAsRead(bookingId: string, userId: string): Promise<void> {
+    // Mark all messages in this booking as read, except those sent by the user themselves
+    await db
+      .update(messages)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(messages.bookingId, bookingId),
+          sql`${messages.senderId} != ${userId}`,
+          eq(messages.isRead, false)
+        )
+      );
+  }
+
+  async getUnreadMessageCount(bookingId: string, userId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.bookingId, bookingId),
+          sql`${messages.senderId} != ${userId}`,
+          eq(messages.isRead, false)
+        )
+      );
+    return Number(result[0]?.count || 0);
   }
 }
 

@@ -128,6 +128,16 @@ export const bookingPhotos = pgTable("booking_photos", {
   uploadedAt: timestamp("uploaded_at").defaultNow(),
 });
 
+// Messages between guest and host for a booking
+export const messages = pgTable("messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => bookings.id).notNull(),
+  senderId: varchar("sender_id").references(() => users.id).notNull(),
+  content: text("content").notNull(),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -202,3 +212,5 @@ export type BookingMessage = typeof bookingMessages.$inferSelect;
 export type InsertBookingMessage = z.infer<typeof insertBookingMessageSchema>;
 export type BookingPhoto = typeof bookingPhotos.$inferSelect;
 export type InsertBookingPhoto = z.infer<typeof insertBookingPhotoSchema>;
+export type Message = typeof messages.$inferSelect;
+export type InsertMessage = Omit<Message, 'id' | 'createdAt' | 'isRead'>;

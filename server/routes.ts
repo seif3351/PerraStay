@@ -1274,6 +1274,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Messaging Routes ==========
+  
+  // Get all messages for a booking
+  app.get("/api/bookings/:id/messages", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Get property to check if user is the host
+      const property = await storage.getProperty(booking.propertyId);
+      
+      // Only the guest or the property host can view messages
+      const isGuest = booking.guestId === req.user!.userId;
+      const isHost = property?.hostId === req.user!.userId;
+      
+      if (!isGuest && !isHost) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "You don't have access to these messages" });
+      }
+
+      const messages = await storage.getMessages(req.params.id);
+      
+      // Mark messages as read for the current user
+      await storage.markMessagesAsRead(req.params.id, req.user!.userId);
+      
+      res.json(messages);
+    } catch (error) {
+      console.error("Failed to fetch messages:", error);
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  // Send a message
+  app.post("/api/bookings/:id/messages", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      console.log('=== SEND MESSAGE ROUTE HIT ===');
+      console.log('Booking ID:', req.params.id);
+      console.log('User ID:', req.user?.userId);
+      console.log('Body:', req.body);
+      
+      const { content } = req.body;
+      
+      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        return res.status(400).json({ message: "Message content is required" });
+      }
+
+      if (content.length > 1000) {
+        return res.status(400).json({ message: "Message too long (max 1000 characters)" });
+      }
+
+      const booking = await storage.getBooking(req.params.id);
+      console.log('Booking found:', booking ? 'Yes' : 'No');
+      console.log('Booking guest ID:', booking?.guestId);
+      
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Get property to check if user is the host
+      const property = await storage.getProperty(booking.propertyId);
+      console.log('Property found:', property ? 'Yes' : 'No');
+      console.log('Property host ID:', property?.hostId);
+      
+      // Only the guest or the property host can send messages
+      const isGuest = booking.guestId === req.user!.userId;
+      const isHost = property?.hostId === req.user!.userId;
+      
+      console.log('Is Guest:', isGuest);
+      console.log('Is Host:', isHost);
+      
+      if (!isGuest && !isHost) {
+        console.log('Authorization failed - user is neither guest nor host');
+        return res.status(403).json({ code: "FORBIDDEN", message: "You don't have access to send messages for this booking" });
+      }
+
+      const message = await storage.createMessage({
+        bookingId: req.params.id,
+        senderId: req.user!.userId,
+        content: content.trim()
+      });
+
+      console.log('Message created successfully');
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // Get unread message count
+  app.get("/api/bookings/:id/messages/unread-count", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Get property to check if user is the host
+      const property = await storage.getProperty(booking.propertyId);
+      
+      // Only the guest or the property host can check unread count
+      const isGuest = booking.guestId === req.user!.userId;
+      const isHost = property?.hostId === req.user!.userId;
+      
+      if (!isGuest && !isHost) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "You don't have access to this booking" });
+      }
+
+      const count = await storage.getUnreadMessageCount(req.params.id, req.user!.userId);
+      res.json({ unreadCount: count });
+    } catch (error) {
+      console.error("Failed to get unread count:", error);
+      res.status(500).json({ message: "Failed to get unread count" });
+    }
+  });
+
   // Reviews routes
   app.post("/api/reviews", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {

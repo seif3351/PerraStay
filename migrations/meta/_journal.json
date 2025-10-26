@@ -8,6 +8,13 @@
       "when": 1761495821523,
       "tag": "0000_ancient_the_fallen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1761511130583,
+      "tag": "0001_remarkable_the_stranger",
+      "breakpoints": true
     }
   ]
 }
