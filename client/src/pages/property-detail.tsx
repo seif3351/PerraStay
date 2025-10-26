@@ -52,7 +52,28 @@ export default function PropertyDetail() {
   const bookingMutation = useMutation({
     mutationFn: async (bookingData: any) => {
       validateBookingDates(bookingData.checkInDate, bookingData.duration);
-      return apiRequest("POST", "/api/bookings", bookingData);
+      
+      // Get fresh CSRF token
+      const csrfResponse = await fetch('/api/csrf-token', { credentials: 'include' });
+      const { csrfToken } = await csrfResponse.json();
+      
+      // Make the request with CSRF token
+      const response = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        credentials: 'include',
+        body: JSON.stringify(bookingData),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create booking');
+      }
+      
+      return response.json();
     },
     onSuccess: () => {
       toast({
@@ -60,10 +81,10 @@ export default function PropertyDetail() {
         description: "Your booking request has been submitted.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Booking Failed",
-        description: "Please try again or contact support.",
+        description: error instanceof Error ? error.message : "Please try again or contact support.",
         variant: "destructive",
       });
     },

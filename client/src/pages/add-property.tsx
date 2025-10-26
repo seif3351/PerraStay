@@ -103,7 +103,7 @@ export default function AddProperty() {
       bathrooms: 1,
       images: [],
       amenities: [],
-      hostId: user?.id || 0,
+      hostId: user?.id || "",
       internetSpeed: null,
       hasStableElectricity: true,
       hasKitchen: true,

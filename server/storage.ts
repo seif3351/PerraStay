@@ -255,8 +255,6 @@ export class DbStorage implements IStorage {
     }
 
     // Verify the files exist in the uploads directory
-    // Temporarily disabled for debugging - files are saved to dist/uploads in dev mode
-    /*
     try {
       await Promise.all(cleanedImages.map(async url => {
         const urlObj = new URL(url);
@@ -264,19 +262,12 @@ export class DbStorage implements IStorage {
         const filename = path.basename(urlObj.pathname);
         // Use the same uploads directory that multer uses
         const filePath = path.join(__dirname, 'uploads', filename);
-        console.log('Checking image file:', {
-          url,
-          filename,
-          filePath,
-          __dirname
-        });
         await fs.access(filePath);
       }));
     } catch (error) {
       console.error('Image file verification error:', error);
       throw new Error('One or more uploaded images are missing from the server.');
     }
-    */
 
     const [property] = await db
       .insert(properties)

@@ -29,7 +29,7 @@ export default function HostDashboard() {
   // Mutation to upgrade user to host
   const upgradeToHostMutation = useMutation({
     mutationFn: () => apiRequest('POST', '/api/users/upgrade-to-host', {}),
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       // Update local storage with new user data
       if (data.user) {
         localStorage.setItem('user', JSON.stringify(data.user));
@@ -39,8 +39,14 @@ export default function HostDashboard() {
       setShowUpgradeModal(false);
       setShowSuccessModal(true);
       
-      // Invalidate queries to refetch with new host status
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      // Wait a bit for the cookie to be set, then invalidate auth query
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Invalidate auth query to get updated user data with isHost: true
+      await queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      
+      // Also invalidate bookings query to refetch with new host privileges
+      await queryClient.invalidateQueries({ queryKey: ['/api/bookings/host'] });
       
       toast({
         title: 'Welcome to hosting!',
@@ -56,32 +62,86 @@ export default function HostDashboard() {
     },
   });
 
+  // Mutation to update booking status
+  const updateBookingStatusMutation = useMutation({
+    mutationFn: async ({ bookingId, status }: { bookingId: string; status: string }) => {
+      // Get fresh CSRF token
+      const csrfResponse = await fetch('/api/csrf-token', { credentials: 'include' });
+      const { csrfToken } = await csrfResponse.json();
+      
+      // Make the request with CSRF token
+      const response = await fetch(`/api/bookings/${bookingId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to update booking status');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate bookings query to refetch updated list
+      queryClient.invalidateQueries({ queryKey: ['/api/bookings/host'] });
+      
+      toast({
+        title: 'Booking Updated',
+        description: `Booking has been ${variables.status === 'confirmed' ? 'approved' : variables.status}.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Update Failed',
+        description: error instanceof Error ? error.message : 'Failed to update booking status.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   // Fetch host's properties
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties/host"],
     queryFn: async () => {
-      const response = await fetch(`/api/properties?hostId=${authUser?.id}`);
+      const response = await fetch(`/api/properties?hostId=${authUser?.id}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        return [];
+      }
       return response.json();
     },
-    enabled: !isChecking && !!authUser?.id,
+    enabled: !isChecking && !!authUser?.id && authUser?.isHost === true,
   });
 
   const { data: allBookings = [] } = useQuery<Booking[]>({
     queryKey: ["/api/bookings/host"],
     queryFn: async () => {
-      const response = await fetch(`/api/bookings/host`);
+      const response = await fetch(`/api/bookings/host`, {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        // Return empty array if user is not a host yet or error occurs
+        return [];
+      }
       return response.json();
     },
-    enabled: !isChecking && !!authUser?.id && properties.length > 0,
+    enabled: !isChecking && !!authUser?.id && authUser?.isHost === true,
   });
 
-  const totalRevenue = allBookings.reduce((sum, booking) => 
+  const totalRevenue = Array.isArray(allBookings) ? allBookings.reduce((sum, booking) => 
     sum + parseFloat(booking.totalAmount), 0
-  );
+  ) : 0;
 
-  const activeBookings = allBookings.filter(booking => 
+  const activeBookings = Array.isArray(allBookings) ? allBookings.filter(booking => 
     booking.status === "active" || booking.status === "confirmed"
-  );
+  ) : [];
 
   // Check if user needs to upgrade to host - use useEffect to avoid state update during render
   useEffect(() => {
@@ -277,11 +337,28 @@ export default function HostDashboard() {
                             </Badge>
                             {booking.status === "pending" && (
                               <div className="space-y-2">
-                                <Button size="sm" className="w-full bg-perra-gold hover:bg-perra-gold/90">
-                                  Approve
+                                <Button 
+                                  size="sm" 
+                                  className="w-full bg-perra-gold hover:bg-perra-gold/90"
+                                  onClick={() => updateBookingStatusMutation.mutate({ 
+                                    bookingId: booking.id, 
+                                    status: 'confirmed' 
+                                  })}
+                                  disabled={updateBookingStatusMutation.isPending}
+                                >
+                                  {updateBookingStatusMutation.isPending ? 'Approving...' : 'Approve'}
                                 </Button>
-                                <Button size="sm" variant="outline" className="w-full">
-                                  Decline
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  className="w-full"
+                                  onClick={() => updateBookingStatusMutation.mutate({ 
+                                    bookingId: booking.id, 
+                                    status: 'cancelled' 
+                                  })}
+                                  disabled={updateBookingStatusMutation.isPending}
+                                >
+                                  {updateBookingStatusMutation.isPending ? 'Declining...' : 'Decline'}
                                 </Button>
                               </div>
                             )}

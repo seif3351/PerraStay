@@ -38,11 +38,17 @@ export function ReviewForm({ propertyId, bookingId }: { propertyId: string; book
 
   const reviewMutation = useMutation({
     mutationFn: async (data: ReviewFormData) => {
+      // Get fresh CSRF token
+      const csrfResponse = await fetch('/api/csrf-token', { credentials: 'include' });
+      const { csrfToken } = await csrfResponse.json();
+      
       const response = await fetch("/api/reviews", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
         },
+        credentials: "include",
         body: JSON.stringify(data),
       });
       if (!response.ok) {

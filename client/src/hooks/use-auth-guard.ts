@@ -26,8 +26,17 @@ export function useAuthGuard(requireAuth = true, requireHost = false) {
         const response = await fetch('/api/auth/me', {
           credentials: 'include' // Important: send cookies with request
         });
+        
         if (!response.ok) {
-          throw new Error('Not authenticated');
+          // 401 is expected when not authenticated, don't throw error
+          if (response.status === 401) {
+            if (requireAuth) {
+              setLocation('/auth');
+            }
+            setUser(null);
+            return;
+          }
+          throw new Error('Authentication check failed');
         }
         
         const userData = await response.json();
@@ -39,13 +48,11 @@ export function useAuthGuard(requireAuth = true, requireHost = false) {
           return;
         }
       } catch (error) {
-        // Not authenticated
+        // Network error or other unexpected errors
+        console.error('Auth check error:', error);
         if (requireAuth) {
-          // Redirect to login only if authentication is required
           setLocation('/auth');
-          return;
         }
-        // Otherwise, just set user to null and continue
         setUser(null);
       } finally {
         setIsChecking(false);

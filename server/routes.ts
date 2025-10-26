@@ -514,7 +514,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log('Email verified successfully for user:', user.email);
-      res.json({ message: "Email verified successfully" });
+
+      // Automatically sign in the user after verification
+      const authToken = jwt.sign(
+        { 
+          userId: user.id, 
+          email: user.email, 
+          isHost: user.isHost 
+        },
+        jwtSecret,
+        { expiresIn: '7d' }
+      );
+      
+      // Set secure cookie
+      res.cookie('auth-token', authToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+
+      // Return user data without password
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ 
+        message: "Email verified successfully",
+        user: userWithoutPassword
+      });
     } catch (error) {
       console.error('Error verifying email:', error);
       res.status(500).json({
@@ -832,7 +857,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Bookings routes
-  app.post("/api/bookings", authenticateToken, requireGuest, async (req: AuthenticatedRequest, res) => {
+  app.post("/api/bookings", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const validatedData = insertBookingSchema.parse(req.body);
       

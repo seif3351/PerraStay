@@ -3,21 +3,8 @@ import { useLocation, useRouter } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { useAuthGuard } from "@/hooks/use-auth-guard";
-import { LoadingSpinner } from "@/components/ui/loading";
 
 export default function VerifyEmail() {
-  // Require authentication but no specific role
-  const { isChecking } = useAuthGuard(true, false);
-
-  // Show loading state while checking auth
-  if (isChecking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    );
-  }
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [verifying, setVerifying] = useState(true);
@@ -102,13 +89,17 @@ export default function VerifyEmail() {
         setSuccess(true);
         toast({
           title: "Email verified",
-          description: "Your email has been successfully verified. You can now sign in.",
+          description: "Your email has been successfully verified. You are now signed in!",
         });
 
-        // Redirect to login page after 3 seconds
+        // Redirect to appropriate dashboard after 2 seconds
         setTimeout(() => {
-          setLocation("/auth?mode=signin");
-        }, 3000);
+          if (data.user?.isHost) {
+            setLocation("/host-dashboard");
+          } else {
+            setLocation("/guest-dashboard");
+          }
+        }, 2000);
       } catch (error) {
         console.error("Verification error:", error);
         toast({
@@ -135,7 +126,7 @@ export default function VerifyEmail() {
           ) : success ? (
             <Alert>
               <AlertDescription>
-                Your email has been verified successfully! Redirecting you to login...
+                Your email has been verified successfully! You are now signed in. Redirecting to your dashboard...
               </AlertDescription>
             </Alert>
           ) : (
