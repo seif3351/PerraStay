@@ -44,6 +44,8 @@ export interface IStorage {
   getBookingsByProperty(propertyId: string): Promise<Booking[]>;
   createBooking(booking: InsertBooking): Promise<Booking>;
   updateBookingStatus(id: string, status: string): Promise<Booking | undefined>;
+  cancelBooking(bookingId: string, userId: string, reason: string): Promise<{ booking: Booking; refundAmount: number }>;
+  confirmCheckout(bookingId: string, data: { propertyCondition: string; damagesReported: boolean; damageDescription?: string; checkoutNotes?: string }): Promise<Booking>;
   
   // Review operations
   getReviewsByProperty(propertyId: string): Promise<Review[]>;
@@ -424,6 +426,84 @@ export class DbStorage implements IStorage {
       .where(eq(bookings.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  async cancelBooking(bookingId: string, userId: string, reason: string): Promise<{ booking: Booking; refundAmount: number }> {
+    const booking = await this.getBooking(bookingId);
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
+
+    // Calculate refund based on cancellation timing
+    const now = new Date();
+    const checkInDate = new Date(booking.checkInDate);
+    const daysUntilCheckIn = Math.floor((checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    let refundPercentage = 0;
+    if (daysUntilCheckIn >= 30) {
+      refundPercentage = 1.0; // 100% refund if 30+ days before
+    } else if (daysUntilCheckIn >= 14) {
+      refundPercentage = 0.5; // 50% refund if 14-29 days before
+    } else if (daysUntilCheckIn >= 7) {
+      refundPercentage = 0.25; // 25% refund if 7-13 days before
+    }
+    // No refund if less than 7 days before check-in
+    
+    const totalPaid = parseFloat(booking.totalAmount) + parseFloat(booking.depositAmount);
+    const refundAmount = totalPaid * refundPercentage;
+
+    const [updated] = await db
+      .update(bookings)
+      .set({
+        status: 'cancelled',
+        cancellationReason: reason,
+        cancelledBy: userId,
+        cancelledAt: now,
+        refundAmount: refundAmount.toFixed(2),
+      })
+      .where(eq(bookings.id, bookingId))
+      .returning();
+
+    // Return the calculated refund amount as a number, not from the DB string
+    return { booking: updated, refundAmount: refundAmount };
+  }
+
+  async confirmCheckout(
+    bookingId: string, 
+    data: { 
+      propertyCondition: string; 
+      damagesReported: boolean; 
+      damageDescription?: string; 
+      checkoutNotes?: string;
+    }
+  ): Promise<Booking> {
+    const booking = await this.getBooking(bookingId);
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
+
+    // Determine if deposit should be refunded
+    // Refund if property condition is excellent/good and no damages
+    const shouldRefundDeposit = 
+      (data.propertyCondition === 'excellent' || data.propertyCondition === 'good') && 
+      !data.damagesReported;
+
+    const [updated] = await db
+      .update(bookings)
+      .set({
+        status: 'completed',
+        checkOutConfirmedByHost: true,
+        checkOutConfirmedAt: new Date(),
+        propertyCondition: data.propertyCondition,
+        damagesReported: data.damagesReported,
+        damageDescription: data.damageDescription || null,
+        checkoutNotes: data.checkoutNotes || null,
+        depositRefunded: shouldRefundDeposit,
+      })
+      .where(eq(bookings.id, bookingId))
+      .returning();
+
+    return updated;
   }
 
   // Review operations

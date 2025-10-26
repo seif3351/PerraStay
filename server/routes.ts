@@ -1391,6 +1391,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== Cancellation & Checkout Routes ==========
+  
+  // Cancel a booking (guest only)
+  app.post("/api/bookings/:id/cancel", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { reason } = req.body;
+      
+      if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+        return res.status(400).json({ message: "Cancellation reason is required" });
+      }
+
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Only the guest can cancel
+      if (booking.guestId !== req.user!.userId) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "Only the guest can cancel this booking" });
+      }
+
+      // Can only cancel pending or confirmed bookings
+      if (booking.status !== 'pending' && booking.status !== 'confirmed') {
+        return res.status(400).json({ message: `Cannot cancel a booking with status: ${booking.status}` });
+      }
+
+      const result = await storage.cancelBooking(req.params.id, req.user!.userId, reason.trim());
+      
+      res.json({
+        booking: result.booking,
+        refundAmount: result.refundAmount,
+        message: `Booking cancelled. Refund amount: $${result.refundAmount.toFixed(2)}`
+      });
+    } catch (error) {
+      console.error("Failed to cancel booking:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to cancel booking" });
+    }
+  });
+
+  // Confirm checkout (host only)
+  app.post("/api/bookings/:id/checkout", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { propertyCondition, damagesReported, damageDescription, checkoutNotes } = req.body;
+      
+      if (!propertyCondition) {
+        return res.status(400).json({ message: "Property condition is required" });
+      }
+
+      const validConditions = ['excellent', 'good', 'fair', 'poor', 'damaged'];
+      if (!validConditions.includes(propertyCondition)) {
+        return res.status(400).json({ message: "Invalid property condition" });
+      }
+
+      if (damagesReported && !damageDescription) {
+        return res.status(400).json({ message: "Damage description is required when damages are reported" });
+      }
+
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Get property to check if user is the host
+      const property = await storage.getProperty(booking.propertyId);
+      if (property?.hostId !== req.user!.userId) {
+        return res.status(403).json({ code: "FORBIDDEN", message: "Only the property host can confirm checkout" });
+      }
+
+      // Can only confirm checkout for active bookings
+      if (booking.status !== 'active') {
+        return res.status(400).json({ message: `Cannot confirm checkout for booking with status: ${booking.status}` });
+      }
+
+      const updatedBooking = await storage.confirmCheckout(req.params.id, {
+        propertyCondition,
+        damagesReported: !!damagesReported,
+        damageDescription,
+        checkoutNotes
+      });
+
+      res.json({
+        booking: updatedBooking,
+        message: `Checkout confirmed. Deposit ${updatedBooking.depositRefunded ? 'refunded' : 'withheld due to property condition or damages'}`
+      });
+    } catch (error) {
+      console.error("Failed to confirm checkout:", error);
+      res.status(500).json({ message: error instanceof Error ? error.message : "Failed to confirm checkout" });
+    }
+  });
+
+  // ========== Testing Utility: Update Booking Status ==========
+  // This endpoint is for testing purposes to manually update booking status
+  app.patch("/api/bookings/:id/status", authenticateToken, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { status } = req.body;
+      const validStatuses = ['pending', 'confirmed', 'active', 'completed', 'cancelled'];
+      
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Status must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Check if user is either guest or host
+      const property = await storage.getProperty(booking.propertyId);
+      const isGuest = booking.guestId === req.user!.userId;
+      const isHost = property?.hostId === req.user!.userId;
+
+      if (!isGuest && !isHost) {
+        return res.status(403).json({ message: "Not authorized to update this booking" });
+      }
+
+      const [updated] = await db
+        .update(bookings)
+        .set({ status })
+        .where(eq(bookings.id, req.params.id))
+        .returning();
+
+      res.json({ 
+        booking: updated,
+        message: `Booking status updated to ${status}` 
+      });
+    } catch (error) {
+      console.error("Failed to update booking status:", error);
+      res.status(500).json({ message: "Failed to update booking status" });
+    }
+  });
+
   // Reviews routes
   app.post("/api/reviews", authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {

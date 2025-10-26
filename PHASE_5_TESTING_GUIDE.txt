@@ -1,0 +1,176 @@
+PHASE 5 TESTING GUIDE: CHECKOUT WORKFLOW
+=========================================
+
+TESTING SETUP COMPLETE ✅
+
+I've added testing utilities to help you test the checkout workflow easily!
+
+TESTING TOOLS ADDED:
+-------------------
+1. Status Update Endpoint: PATCH /api/bookings/:id/status
+2. Testing Tools Card in Booking Detail page (orange dashed border)
+3. Quick status change buttons: Pending, Confirmed, Active, Completed
+
+HOW TO TEST THE CHECKOUT WORKFLOW:
+-----------------------------------
+
+STEP 1: CREATE OR FIND A BOOKING
+---------------------------------
+- Go to Guest Dashboard
+- You should have at least one booking (create one if needed)
+- Click on the booking to view details
+
+STEP 2: SET BOOKING TO "ACTIVE" STATUS
+---------------------------------------
+- In the booking detail page, scroll down to see the "🧪 Testing Tools" card
+- Click the "Active" button (blue border)
+- The booking status badge at the top should turn blue and say "ACTIVE"
+
+STEP 3: VIEW AS HOST
+--------------------
+- Log out from guest account
+- Log in as the property host
+- Go to Host Dashboard
+- Find the same booking (it should show as "ACTIVE")
+- Click on the booking to view details
+
+STEP 4: TEST CHECKOUT CONFIRMATION
+-----------------------------------
+As the HOST, you should now see:
+✅ "Confirm Checkout" button (gold color) in Quick Actions
+✅ Click it to open the checkout dialog
+
+In the Checkout Dialog:
+1. Select Property Condition:
+   - Excellent → Deposit refunded ✅
+   - Good → Deposit refunded ✅
+   - Fair → Deposit retained ❌
+   - Poor → Deposit retained ❌
+   - Damaged → Deposit retained ❌
+
+2. Test Damages Checkbox:
+   - Check "Damages or issues found"
+   - Fill in damage description
+   - Notice: Even with "Excellent" condition, deposit will be retained if damages checked
+
+3. Add Checkout Notes (optional):
+   - "Guest was very respectful, property in great condition"
+
+4. Click "Confirm Checkout"
+
+STEP 5: VERIFY RESULTS
+-----------------------
+After clicking "Confirm Checkout":
+✅ Success toast should appear
+✅ Booking status should change to "COMPLETED"
+✅ Green alert box should appear showing:
+   - Property condition
+   - Damages status
+   - Checkout notes
+   - Deposit status (Refunded/Retained)
+
+STEP 6: VIEW AS GUEST
+----------------------
+- Log out from host account
+- Log in as guest
+- Go to Guest Dashboard
+- Find the completed booking
+- Click to view details
+- You should see the checkout confirmation details
+
+TEST SCENARIOS TO TRY:
+----------------------
+
+Scenario 1: Perfect Checkout
+- Property Condition: Excellent
+- Damages: No
+- Expected: Deposit refunded ✅
+
+Scenario 2: Good with Minor Issues
+- Property Condition: Good
+- Damages: No
+- Expected: Deposit refunded ✅
+
+Scenario 3: Excellent but Damaged
+- Property Condition: Excellent
+- Damages: Yes (describe: "Broken coffee table")
+- Expected: Deposit retained ❌
+
+Scenario 4: Fair Condition
+- Property Condition: Fair
+- Damages: No
+- Notes: "Property needs better cleaning"
+- Expected: Deposit retained ❌
+
+Scenario 5: Significant Damage
+- Property Condition: Damaged
+- Damages: Yes (describe: "Hole in wall, stained carpet")
+- Notes: "Guest will be charged for repairs"
+- Expected: Deposit retained ❌
+
+TESTING THE CANCEL WORKFLOW (FOR COMPARISON):
+----------------------------------------------
+
+STEP 1: Create a new booking or use existing
+STEP 2: Make sure status is "pending" or "confirmed" (use Testing Tools)
+STEP 3: As GUEST, click "Cancel Booking"
+STEP 4: Select reason and confirm
+STEP 5: Verify refund calculation based on check-in date
+
+REFUND TIERS:
+- 30+ days before check-in = 100% refund
+- 14-29 days = 50% refund
+- 7-13 days = 25% refund
+- Less than 7 days = No refund
+
+EXPECTED BEHAVIOR SUMMARY:
+--------------------------
+
+Guest View:
+- Pending/Confirmed bookings → Can cancel ❌
+- Active bookings → Can upload photos, chat 📸💬
+- Completed bookings → Can view checkout details ✅
+- Cancelled bookings → Can view cancellation details ℹ️
+
+Host View:
+- Pending bookings → Can view details 👁️
+- Confirmed bookings → Can chat with guest 💬
+- Active bookings → Can confirm checkout ✅
+- Completed bookings → Can view checkout details 📋
+- Cancelled bookings → Can view cancellation details ℹ️
+
+STATUS TRANSITION FLOW:
+-----------------------
+pending → confirmed → active → completed
+   ↓         ↓
+cancelled  cancelled
+
+NOTES:
+------
+- The Testing Tools card (orange border) is for development only
+- You can quickly change booking status without waiting for dates
+- Both guest and host can use the status update buttons
+- In production, you would remove this testing card
+- Status changes are validated on the server side
+
+TROUBLESHOOTING:
+----------------
+
+Issue: "Confirm Checkout" button not showing
+Solution: Make sure booking status is "active" using Testing Tools
+
+Issue: Can't update status
+Solution: Make sure you're either the guest or the property host
+
+Issue: CSRF token error
+Solution: Refresh the page and try again
+
+Issue: "Booking not found"
+Solution: Make sure you're logged in and have access to the booking
+
+READY TO TEST!
+--------------
+Your server is running on http://localhost:5000
+Both the cancellation and checkout workflows are ready to test.
+
+Use the Testing Tools to quickly change booking statuses and test all scenarios! 🎉

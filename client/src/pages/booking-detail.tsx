@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,11 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useAuthGuard } from "@/hooks/use-auth-guard";
 import { LoadingSpinner } from "@/components/ui/loading";
-import { ArrowLeft, Calendar, DollarSign, Home, UserCircle, MapPin, Wifi, Key, Phone, Clock, Gift, ExternalLink, Camera, AlertCircle } from "lucide-react";
+import { ArrowLeft, Calendar, DollarSign, Home, UserCircle, MapPin, Wifi, Key, Phone, Clock, Gift, ExternalLink, Camera, AlertCircle, XCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { BookingPhotoUpload } from "@/components/booking-photo-upload";
 import { BookingPhotoGallery } from "@/components/booking-photo-gallery";
 import { BookingChat } from "@/components/booking-chat";
+import { CancelBookingDialog } from "@/components/cancel-booking-dialog";
+import { CheckoutConfirmationDialog } from "@/components/checkout-confirmation-dialog";
+import { useToast } from "@/hooks/use-toast";
 import type { Booking, Property, User, PropertyAccessInfo } from "@shared/schema";
 
 interface BookingWithDetails extends Booking {
@@ -24,6 +28,10 @@ export default function BookingDetail() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { isChecking, user } = useAuthGuard(true, false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: booking, isLoading, error } = useQuery<BookingWithDetails>({
     queryKey: [`/api/bookings/${id}`],
@@ -37,6 +45,45 @@ export default function BookingDetail() {
       return response.json();
     },
     enabled: !isChecking && !!id && !!user,
+  });
+
+  // Testing utility: Update booking status (must be before conditional returns)
+  const updateStatusMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
+      const csrfResponse = await fetch('/api/csrf-token', { credentials: 'include' });
+      const { csrfToken } = await csrfResponse.json();
+
+      const response = await fetch(`/api/bookings/${id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to update status');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/bookings/${id}`] });
+      toast({
+        title: "Status updated",
+        description: "Booking status has been updated for testing",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   if (isChecking || isLoading) {
@@ -211,6 +258,55 @@ export default function BookingDetail() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Cancellation Information - If cancelled */}
+            {booking.status === 'cancelled' && (
+              <Alert className="border-red-200 bg-red-50">
+                <XCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-red-900">Booking Cancelled</p>
+                    <div className="text-sm text-red-700 space-y-1">
+                      <p><strong>Reason:</strong> {booking.cancellationReason}</p>
+                      <p><strong>Cancelled by:</strong> {booking.cancelledBy === booking.guestId ? 'Guest' : 'Host'}</p>
+                      <p><strong>Cancelled on:</strong> {booking.cancelledAt ? new Date(booking.cancelledAt).toLocaleDateString() : 'N/A'}</p>
+                      {booking.refundAmount !== null && (
+                        <p><strong>Refund amount:</strong> ${Number(booking.refundAmount).toFixed(2)}</p>
+                      )}
+                    </div>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Checkout Confirmation - If completed */}
+            {booking.status === 'completed' && booking.propertyCondition && (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <p className="font-semibold text-green-900">Checkout Confirmed</p>
+                    <div className="text-sm text-green-700 space-y-1">
+                      <p><strong>Property condition:</strong> {booking.propertyCondition.charAt(0).toUpperCase() + booking.propertyCondition.slice(1)}</p>
+                      {booking.damagesReported && (
+                        <>
+                          <p><strong>Damages reported:</strong> Yes</p>
+                          {booking.damageDescription && (
+                            <p><strong>Damage description:</strong> {booking.damageDescription}</p>
+                          )}
+                        </>
+                      )}
+                      {booking.checkoutNotes && (
+                        <p><strong>Notes:</strong> {booking.checkoutNotes}</p>
+                      )}
+                      <p className="pt-2 border-t border-green-200">
+                        <strong>Deposit status:</strong> {booking.depositRefunded ? 'Refunded' : 'Retained'}
+                      </p>
+                    </div>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Contact Information */}
             <Card>
@@ -611,15 +707,99 @@ export default function BookingDetail() {
                 >
                   View Property
                 </Button>
-                {booking.status === 'confirmed' && isGuest && (
-                  <p className="text-sm text-center text-perra-gray pt-2">
-                    More features coming soon: messaging, check-in photos, and more!
-                  </p>
+
+                {/* Cancel Button - For guests with pending/confirmed bookings */}
+                {isGuest && (booking.status === 'pending' || booking.status === 'confirmed') && (
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => setShowCancelDialog(true)}
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Cancel Booking
+                  </Button>
                 )}
+
+                {/* Checkout Button - For hosts with active bookings */}
+                {!isGuest && booking.status === 'active' && (
+                  <Button
+                    className="w-full bg-perra-gold hover:bg-perra-gold/90"
+                    onClick={() => setShowCheckoutDialog(true)}
+                  >
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Confirm Checkout
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Testing Utilities - Development Only */}
+            <Card className="border-dashed border-orange-300">
+              <CardHeader>
+                <CardTitle className="text-sm text-orange-600">🧪 Testing Tools</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-gray-500 mb-3">
+                  Update booking status to test different workflows
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => updateStatusMutation.mutate('pending')}
+                    disabled={updateStatusMutation.isPending || booking.status === 'pending'}
+                  >
+                    Pending
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => updateStatusMutation.mutate('confirmed')}
+                    disabled={updateStatusMutation.isPending || booking.status === 'confirmed'}
+                  >
+                    Confirmed
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-blue-300 text-blue-600 hover:bg-blue-50"
+                    onClick={() => updateStatusMutation.mutate('active')}
+                    disabled={updateStatusMutation.isPending || booking.status === 'active'}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => updateStatusMutation.mutate('completed')}
+                    disabled={updateStatusMutation.isPending || booking.status === 'completed'}
+                  >
+                    Completed
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
         </div>
+
+        {/* Cancel Booking Dialog */}
+        <CancelBookingDialog
+          open={showCancelDialog}
+          onOpenChange={setShowCancelDialog}
+          bookingId={booking.id}
+          checkInDate={booking.checkInDate}
+          totalAmount={booking.totalAmount}
+          depositAmount={booking.depositAmount}
+        />
+
+        {/* Checkout Confirmation Dialog */}
+        <CheckoutConfirmationDialog
+          open={showCheckoutDialog}
+          onOpenChange={setShowCheckoutDialog}
+          bookingId={booking.id}
+          depositAmount={booking.depositAmount}
+          guestName={`${booking.guest.firstName} ${booking.guest.lastName}`}
+        />
       </div>
     </div>
   );

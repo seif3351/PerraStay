@@ -62,6 +62,19 @@ export const bookings = pgTable("bookings", {
   checkOutConfirmedByHost: boolean("check_out_confirmed_by_host").default(false),
   checkOutConfirmedAt: timestamp("check_out_confirmed_at"),
   reviewedByGuest: boolean("reviewed_by_guest").default(false),
+  
+  // Cancellation fields
+  cancellationReason: text("cancellation_reason"),
+  cancelledBy: varchar("cancelled_by").references(() => users.id),
+  cancelledAt: timestamp("cancelled_at"),
+  refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }),
+  
+  // Checkout confirmation fields
+  checkoutNotes: text("checkout_notes"),
+  propertyCondition: text("property_condition"), // excellent, good, fair, poor, damaged
+  damagesReported: boolean("damages_reported").default(false),
+  damageDescription: text("damage_description"),
+  
   createdAt: timestamp("created_at").defaultNow(),
 });
 
