@@ -212,8 +212,6 @@ const requireGuest = (req: AuthenticatedRequest, res: Response, next: NextFuncti
 export async function registerRoutes(app: Express): Promise<Server> {
   // Serve uploaded files
   app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-  // Serve uploaded files
-  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
   // Image upload endpoint
   app.post('/api/upload-image', authenticateToken, (req: AuthenticatedRequest, res) => {
@@ -1561,49 +1559,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(orders);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch delivery orders" });
-    }
-  });
-
-  // Image upload endpoint with retry capability
-  app.post("/api/upload-image", 
-    authenticateToken,
-    (req, res, next) => upload.single('image')(req, res, err => handleMulterError(err, req, res, next)),
-    async (req: AuthenticatedRequest, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ 
-          error: "No image file provided or invalid file type",
-          details: "Please ensure the file is a valid JPEG, PNG, or WebP image under 5MB"
-        });
-      }
-
-      // Verify the uploaded file exists and is readable
-      try {
-        await fs.promises.access(req.file.path, fs.constants.R_OK);
-      } catch (err) {
-        return res.status(500).json({
-          error: "File upload failed",
-          details: "The uploaded file could not be processed. Please try again."
-        });
-      }
-
-      // Generate the URL for the uploaded file
-      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-      const baseUrl = process.env.BASE_URL || `${protocol}://${req.get('host')}`;
-      const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
-
-      res.status(200).json({
-        url: imageUrl,
-        filename: req.file.filename,
-        size: req.file.size,
-        mimetype: req.file.mimetype
-      });
-    } catch (error) {
-      console.error('Image upload error:', error);
-      res.status(500).json({ 
-        message: "Failed to upload image",
-        error: error instanceof Error ? error.message : String(error)
-      });
     }
   });
 
